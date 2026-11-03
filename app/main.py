@@ -44,6 +44,7 @@ class InstanceCreateRequest(BaseModel):
     difficulty: str = Field(default="normal")
     gamemode: str = Field(default="survival")
     max_players: int = Field(default=10, ge=1, le=200)
+    options: dict[str, Any] = Field(default_factory=dict)
 
 
 class InstanceUpdateRequest(BaseModel):
@@ -53,6 +54,7 @@ class InstanceUpdateRequest(BaseModel):
     difficulty: str | None = None
     gamemode: str | None = None
     max_players: int | None = Field(default=None, ge=1, le=200)
+    options: dict[str, Any] | None = None
 
 
 class ConsoleCommandRequest(BaseModel):
@@ -295,6 +297,7 @@ async def api_create_instance(req: InstanceCreateRequest) -> dict[str, Any]:
         difficulty=req.difficulty,
         gamemode=req.gamemode,
         max_players=req.max_players,
+        options=req.options,
     )
     if broadcaster.target is None:
         broadcaster.set_target_instance(inst)
@@ -314,9 +317,13 @@ async def api_update_instance(instance_id: str, req: InstanceUpdateRequest) -> d
             difficulty=req.difficulty,
             gamemode=req.gamemode,
             max_players=req.max_players,
+            options=req.options,
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    if inst.get("status") == "online":
+        await manager.apply_live_options(instance_id)
 
     if broadcaster.target and broadcaster.target.id == instance_id:
         broadcaster.set_target_instance(inst)

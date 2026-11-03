@@ -43,6 +43,14 @@ from app.bootstrap import (
     ensure_vc_redist,
     sync_vc_dlls_to_directory,
 )
+from app.world_options import (
+    DEFAULT_WORLD_OPTIONS,
+    apply_options_to_level_dat,
+    build_live_gamerule_commands,
+    build_server_properties,
+    normalize_world_options,
+    read_options_from_level_dat,
+)
 
 logger = logging.getLogger("bedrock.manager")
 
@@ -147,10 +155,20 @@ class InstanceManager:
                     max_players INTEGER NOT NULL DEFAULT 10,
                     port INTEGER NOT NULL UNIQUE,
                     ipv6_port INTEGER NOT NULL,
-                    created_at TEXT NOT NULL
+                    created_at TEXT NOT NULL,
+                    options_json TEXT NOT NULL DEFAULT '{}'
                 )
                 """
             )
+            # Migrate existing instances table if options_json column does not exist yet
+            cols = {
+                row["name"]
+                for row in conn.execute("PRAGMA table_info(instances)").fetchall()
+            }
+            if "options_json" not in cols:
+                conn.execute(
+                    "ALTER TABLE instances ADD COLUMN options_json TEXT NOT NULL DEFAULT '{}'"
+                )
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS settings (
@@ -223,45 +241,14 @@ class InstanceManager:
         return (BDS_BIN_DIR / exe_name).exists()
 
     def write_server_properties(self, instance: dict[str, Any]) -> Path:
-        """Write standard Bedrock Dedicated Server `server.properties` for an instance."""
+        """Write `server.properties` and synchronize `worlds/<world_name>/level.dat` options."""
         inst_dir = self.instance_dir(instance["id"])
         inst_dir.mkdir(parents=True, exist_ok=True)
         props_path = inst_dir / "server.properties"
 
-        content = (
-            "# Minecraft Bedrock Dedicated Server Properties\n"
-            "# Managed automatically by Bedrock Multi-Server Manager\n"
-            f"server-name={instance['display_name']}\n"
-            f"gamemode={instance['gamemode']}\n"
-            "force-gamemode=false\n"
-            f"difficulty={instance['difficulty']}\n"
-            "allow-cheats=true\n"
-            f"max-players={instance['max_players']}\n"
-            "online-mode=false\n"
-            "allow-list=false\n"
-            f"server-port={instance['port']}\n"
-            f"server-portv6={instance['ipv6_port']}\n"
-            "enable-lan-visibility=true\n"
-            "transport=nethernet\n"
-            "view-distance=32\n"
-            "tick-distance=4\n"
-            "player-idle-timeout=30\n"
-            "max-threads=8\n"
-            f"level-name={instance['world_name']}\n"
-            f"level-seed={instance.get('seed', '')}\n"
-            "default-player-permission-level=member\n"
-            "texturepack-required=false\n"
-            "content-log-file-enabled=false\n"
-            "compression-threshold=1\n"
-            "compression-algorithm=zlib\n"
-            "server-authoritative-movement=server-auth\n"
-            "player-movement-score-threshold=20\n"
-            "player-movement-action-direction-threshold=0.85\n"
-            "player-movement-distance-threshold=0.3\n"
-            "player-movement-duration-threshold-in-ms=500\n"
-            "correct-player-movement=false\n"
-            "server-authoritative-block-breaking=false\n"
-        )
+        opts = normalize_world_options(instance.get("options"))
+        instance["options"] = opts
+        content = build_server_properties(instance, opts)
         props_path.write_text(content, encoding="utf-8")
 
         for json_file in ("permissions.json", "allowlist.json"):
@@ -272,6 +259,10 @@ class InstanceManager:
         w_dir = inst_dir / "worlds" / instance["world_name"]
         w_dir.mkdir(parents=True, exist_ok=True)
         (w_dir / "levelname.txt").write_text(instance["world_name"], encoding="utf-8")
+        try:
+            apply_options_to_level_dat(w_dir, instance, opts)
+        except Exception as exc:
+            logger.warning("Failed to apply level.dat options for %s: %s", instance["id"], exc)
         return props_path
 
     def create_instance(
@@ -283,11 +274,13 @@ class InstanceManager:
         gamemode: str = "survival",
         max_players: int = 10,
         port: int | None = None,
+        options: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """Create a new BDS instance, allocate its UDP port, and write `server.properties`."""
+        """Create a new BDS instance, allocate its UDP port, and write `server.properties` & `level.dat`."""
         clean_name = display_name.strip() or "Bedrock Server"
         clean_world = re.sub(r'[<>:"/\\|?*]', "_", world_name.strip() or "BedrockLevel")
-        clean_diff = difficulty.lower().strip()
+        clean_opts = normalize_world_options(options)
+        clean_diff = "hard" if clean_opts.get("hardcore") else difficulty.lower().strip()
         if clean_diff not in ("peaceful", "easy", "normal", "hard"):
             clean_diff = "normal"
         clean_gm = gamemode.lower().strip()
@@ -311,6 +304,8 @@ class InstanceManager:
             "port": allocated_port,
             "ipv6_port": ipv6_port,
             "created_at": created_at,
+            "options": clean_opts,
+            "options_json": json.dumps(clean_opts),
         }
 
         with self._get_conn() as conn:
@@ -318,8 +313,8 @@ class InstanceManager:
                 """
                 INSERT INTO instances (
                     id, display_name, world_name, seed, difficulty,
-                    gamemode, max_players, port, ipv6_port, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    gamemode, max_players, port, ipv6_port, created_at, options_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     record["id"],
@@ -332,6 +327,7 @@ class InstanceManager:
                     record["port"],
                     record["ipv6_port"],
                     record["created_at"],
+                    record["options_json"],
                 ),
             )
             conn.commit()
@@ -354,10 +350,16 @@ class InstanceManager:
         difficulty: str | None = None,
         gamemode: str | None = None,
         max_players: int | None = None,
+        options: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         inst = self.get_instance(instance_id)
         if not inst:
             raise ValueError(f"Instance '{instance_id}' not found")
+
+        merged_opts = normalize_world_options(options, inst.get("options"))
+        next_diff = difficulty.lower() if difficulty else inst["difficulty"]
+        if merged_opts.get("hardcore"):
+            next_diff = "hard"
 
         updated = {
             "id": instance_id,
@@ -368,11 +370,13 @@ class InstanceManager:
                 else inst["world_name"]
             ),
             "seed": seed.strip() if seed is not None else inst["seed"],
-            "difficulty": difficulty.lower() if difficulty else inst["difficulty"],
+            "difficulty": next_diff,
             "gamemode": gamemode.lower() if gamemode else inst["gamemode"],
             "max_players": int(max_players) if max_players is not None else inst["max_players"],
             "port": inst["port"],
             "ipv6_port": inst["ipv6_port"],
+            "options": merged_opts,
+            "options_json": json.dumps(merged_opts),
         }
 
         with self._get_conn() as conn:
@@ -380,7 +384,7 @@ class InstanceManager:
                 """
                 UPDATE instances
                 SET display_name = ?, world_name = ?, seed = ?,
-                    difficulty = ?, gamemode = ?, max_players = ?
+                    difficulty = ?, gamemode = ?, max_players = ?, options_json = ?
                 WHERE id = ?
                 """,
                 (
@@ -390,15 +394,27 @@ class InstanceManager:
                     updated["difficulty"],
                     updated["gamemode"],
                     updated["max_players"],
+                    updated["options_json"],
                     instance_id,
                 ),
             )
             conn.commit()
 
-        self.write_server_properties(updated)
+        # Write server.properties; only rewrite level.dat directly on disk if instance is offline
+        # (when online, BDS holds level.dat open and overwrites it on shutdown, so we send live STDIN gamerules!)
+        rt = self.get_runtime(instance_id)
+        if rt.status == "offline":
+            self.write_server_properties(updated)
+        else:
+            inst_dir = self.instance_dir(instance_id)
+            inst_dir.mkdir(parents=True, exist_ok=True)
+            (inst_dir / "server.properties").write_text(
+                build_server_properties(updated, merged_opts), encoding="utf-8"
+            )
+
         self.append_log_sync(
             instance_id,
-            f"\x1b[36m[CONFIG]\x1b[0m Updated server.properties for '{updated['display_name']}'",
+            f"\x1b[36m[CONFIG]\x1b[0m Updated server & world options for '{updated['display_name']}'",
         )
         return self.get_instance(instance_id)  # type: ignore[return-value]
 
@@ -471,6 +487,18 @@ class InstanceManager:
                 rt.started_at = None
                 rt.players_online = 0
 
+        raw_opts_json = data.get("options_json") or "{}"
+        try:
+            parsed_opts = json.loads(raw_opts_json) if isinstance(raw_opts_json, str) else {}
+        except Exception:
+            parsed_opts = {}
+
+        if not parsed_opts:
+            w_dir = self.world_dir(inst_id, str(data.get("world_name", "BedrockLevel")))
+            opts = read_options_from_level_dat(w_dir)
+        else:
+            opts = normalize_world_options(parsed_opts)
+
         data.update(
             {
                 "status": rt.status,
@@ -483,6 +511,7 @@ class InstanceManager:
                 "engine_mode": rt.engine_mode,
                 "nethernet_udp_port": nethernet_udp_port,
                 "properties_path": str(self.instance_dir(inst_id) / "server.properties"),
+                "options": opts,
             }
         )
         return data
@@ -546,7 +575,25 @@ class InstanceManager:
             await self.console_push_callback(instance_id, entry)
 
         if "Server started." in text or "Accepting clients on" in text:
+            if "Server started." in text:
+                asyncio.create_task(self.apply_live_options(instance_id))
             await self._notify_state()
+
+    async def apply_live_options(self, instance_id: str) -> None:
+        """Send configured `gamerule` and `difficulty` commands to a running BDS instance via STDIN."""
+        inst = self.get_instance(instance_id)
+        if not inst:
+            return
+        rt = self.get_runtime(instance_id)
+        if not rt.process or rt.process.returncode is not None or not rt.process.stdin:
+            return
+        cmds = build_live_gamerule_commands(inst, inst.get("options"))
+        try:
+            for c in cmds:
+                rt.process.stdin.write((c + "\n").encode("utf-8"))
+            await rt.process.stdin.drain()
+        except Exception as exc:
+            logger.debug("Could not dispatch live gamerules to %s: %s", instance_id, exc)
 
     def _resolve_bds_command(self, inst_dir: Path) -> tuple[list[str], str]:
         """

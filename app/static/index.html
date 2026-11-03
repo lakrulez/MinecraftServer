@@ -295,6 +295,9 @@
           <button onclick="prefillOrSendCommand('time set night', true)" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-indigo-300 border border-slate-700 shrink-0 cursor-pointer">time set night</button>
           <button onclick="prefillOrSendCommand('gamemode creative @a', true)" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-slate-700 shrink-0 cursor-pointer">gamemode creative</button>
           <button onclick="prefillOrSendCommand('gamemode survival @a', true)" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-sky-300 border border-slate-700 shrink-0 cursor-pointer">gamemode survival</button>
+          <button onclick="prefillOrSendCommand('gamerule showcoordinates true', true)" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-slate-700 shrink-0 cursor-pointer">coords ON</button>
+          <button onclick="prefillOrSendCommand('gamerule keepinventory true', true)" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-slate-700 shrink-0 cursor-pointer">keepinv ON</button>
+          <button onclick="prefillOrSendCommand('gamerule playerssleepingpercentage 1', true)" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-teal-300 border border-slate-700 shrink-0 cursor-pointer">1P sleep</button>
           <button onclick="prefillOrSendCommand('op ', false)" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-purple-300 border border-slate-700 shrink-0 cursor-pointer">op &lt;player&gt;</button>
           <button onclick="prefillOrSendCommand('deop ', false)" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-rose-300 border border-slate-700 shrink-0 cursor-pointer">deop &lt;player&gt;</button>
           <button onclick="prefillOrSendCommand('whitelist add ', false)" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-teal-300 border border-slate-700 shrink-0 cursor-pointer">whitelist add</button>
@@ -384,114 +387,705 @@
     </section>
   </main>
 
-  <!-- Creation Wizard Modal -->
-  <div id="create-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/75 backdrop-blur-sm p-4">
-    <div class="w-full max-w-lg rounded-2xl bg-slate-900 border border-slate-700 shadow-2xl overflow-hidden">
-      <div class="px-6 py-4 bg-slate-950 border-b border-slate-800 flex items-center justify-between">
+  <!-- Comprehensive World & Server Builder / Options Modal (Create & Edit) -->
+  <div id="create-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/80 backdrop-blur-sm p-3 sm:p-4">
+    <div class="w-full max-w-4xl max-h-[92vh] rounded-2xl bg-slate-900 border border-slate-700 shadow-2xl overflow-hidden flex flex-col">
+      <!-- Modal Header -->
+      <div class="px-6 py-4 bg-slate-950 border-b border-slate-800 flex items-center justify-between shrink-0">
         <div>
-          <h3 class="text-base font-bold text-white">Create New Bedrock Server Instance</h3>
-          <p class="text-xs text-slate-400">Allocates a unique UDP port and generates <code class="font-mono text-emerald-400">server.properties</code></p>
+          <h3 id="wiz-modal-title" class="text-base font-bold text-white flex items-center gap-2">
+            <span>Create &amp; Configure Bedrock Server World</span>
+            <span id="wiz-mode-badge" class="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">44+ OPTIONS</span>
+          </h3>
+          <p id="wiz-modal-subtitle" class="text-xs text-slate-400 mt-0.5">
+            Configures both <code class="font-mono text-emerald-400">server.properties</code> and native Bedrock <code class="font-mono text-sky-400">level.dat</code> NBT world rules
+          </p>
         </div>
-        <button onclick="closeCreateModal()" class="text-slate-400 hover:text-white p-1 cursor-pointer">✕</button>
+        <button onclick="closeCreateModal()" class="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 cursor-pointer">✕</button>
       </div>
 
-      <form onsubmit="submitCreateInstance(event)" class="p-6 space-y-4">
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div class="sm:col-span-2">
-            <label class="block text-xs font-semibold text-slate-300 mb-1">Server Display Name (MOTD)</label>
-            <input
-              id="wiz-display-name"
-              type="text"
-              required
-              placeholder="e.g. Switch Family Survival"
-              class="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500"
-            />
-          </div>
+      <!-- One-Click World Presets Bar -->
+      <div class="px-6 py-2.5 bg-slate-900/95 border-b border-slate-800/80 flex items-center gap-2 overflow-x-auto shrink-0 text-xs">
+        <span class="text-[11px] font-mono uppercase tracking-wider text-slate-400 shrink-0 mr-1">Quick Presets:</span>
+        <button type="button" onclick="applyWorldPreset('standard')" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-medium shrink-0 cursor-pointer transition">
+          🌍 Standard Survival
+        </button>
+        <button type="button" onclick="applyWorldPreset('coop_starter')" class="px-2.5 py-1 rounded-lg bg-emerald-950/80 hover:bg-emerald-900/70 text-emerald-300 border border-emerald-700/50 font-medium shrink-0 cursor-pointer transition">
+          🎒 Co-Op Starter (Chest + Map + Coords + 1P Sleep)
+        </button>
+        <button type="button" onclick="applyWorldPreset('hardcore')" class="px-2.5 py-1 rounded-lg bg-rose-950/80 hover:bg-rose-900/70 text-rose-300 border border-rose-700/50 font-medium shrink-0 cursor-pointer transition">
+          💀 Hardcore Survival
+        </button>
+        <button type="button" onclick="applyWorldPreset('casual')" class="px-2.5 py-1 rounded-lg bg-sky-950/80 hover:bg-sky-900/70 text-sky-300 border border-sky-700/50 font-medium shrink-0 cursor-pointer transition">
+          🛡 Casual (Keep Inv + No Griefing + Starter Gear)
+        </button>
+        <button type="button" onclick="applyWorldPreset('flat_creative')" class="px-2.5 py-1 rounded-lg bg-purple-950/80 hover:bg-purple-900/70 text-purple-300 border border-purple-700/50 font-medium shrink-0 cursor-pointer transition">
+          🎨 Superflat Creative Lab
+        </button>
+        <button type="button" onclick="applyWorldPreset('pvp_arena')" class="px-2.5 py-1 rounded-lg bg-amber-950/80 hover:bg-amber-900/70 text-amber-300 border border-amber-700/50 font-medium shrink-0 cursor-pointer transition">
+          ⚔ PvP Arena
+        </button>
+      </div>
 
-          <div>
-            <label class="block text-xs font-semibold text-slate-300 mb-1">World Folder Name</label>
-            <input
-              id="wiz-world-name"
-              type="text"
-              required
-              placeholder="e.g. SurvivalWorld"
-              value="BedrockWorld"
-              class="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500"
-            />
-          </div>
+      <!-- Category Navigation Tabs -->
+      <div class="px-6 pt-2.5 bg-slate-950/70 border-b border-slate-800 flex items-center gap-1.5 overflow-x-auto shrink-0 text-xs font-semibold">
+        <button type="button" id="wtab-btn-world" onclick="switchWizardTab('world')" class="px-3 py-2 rounded-t-lg border-b-2 border-emerald-500 text-emerald-400 bg-slate-900/90 cursor-pointer shrink-0">
+          1. 🌍 World &amp; Hardcore
+        </button>
+        <button type="button" id="wtab-btn-starter" onclick="switchWizardTab('starter')" class="px-3 py-2 rounded-t-lg border-b-2 border-transparent text-slate-400 hover:text-slate-200 cursor-pointer shrink-0">
+          2. 🎒 Chest, Map &amp; HUD
+        </button>
+        <button type="button" id="wtab-btn-survival" onclick="switchWizardTab('survival')" class="px-3 py-2 rounded-t-lg border-b-2 border-transparent text-slate-400 hover:text-slate-200 cursor-pointer shrink-0">
+          3. ⚔ Combat, Death &amp; Sleep
+        </button>
+        <button type="button" id="wtab-btn-mobs" onclick="switchWizardTab('mobs')" class="px-3 py-2 rounded-t-lg border-b-2 border-transparent text-slate-400 hover:text-slate-200 cursor-pointer shrink-0">
+          4. 🌦 Mobs, Drops &amp; TNT
+        </button>
+        <button type="button" id="wtab-btn-cheats" onclick="switchWizardTab('cheats')" class="px-3 py-2 rounded-t-lg border-b-2 border-transparent text-slate-400 hover:text-slate-200 cursor-pointer shrink-0">
+          5. ⚡ Cheats, Perms &amp; Edu
+        </button>
+        <button type="button" id="wtab-btn-perf" onclick="switchWizardTab('perf')" class="px-3 py-2 rounded-t-lg border-b-2 border-transparent text-slate-400 hover:text-slate-200 cursor-pointer shrink-0">
+          6. 🖥 Distance &amp; Network
+        </button>
+      </div>
 
-          <div>
-            <div class="flex items-center justify-between mb-1">
-              <label class="block text-xs font-semibold text-slate-300">World Seed (Optional)</label>
-              <button type="button" onclick="randomizeSeed()" class="text-[11px] text-emerald-400 hover:underline cursor-pointer">Randomize</button>
+      <!-- Scrollable Form Body -->
+      <form id="wizard-form" onsubmit="submitCreateInstance(event)" class="flex-1 overflow-y-auto terminal-scroll p-6 space-y-5">
+        <input type="hidden" id="wiz-edit-instance-id" value="" />
+
+        <!-- TAB 1: Core World & Hardcore -->
+        <div id="wtab-panel-world" class="space-y-4">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div class="sm:col-span-2">
+              <label class="block text-xs font-semibold text-slate-300 mb-1">Server Display Name (LAN Broadcast &amp; MOTD)</label>
+              <input
+                id="wiz-display-name"
+                type="text"
+                required
+                placeholder="e.g. Switch Family Survival"
+                class="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500"
+              />
             </div>
-            <input
-              id="wiz-seed"
-              type="text"
-              placeholder="Leave blank for random"
-              class="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-sm font-mono text-white focus:outline-none focus:border-emerald-500"
-            />
+
+            <div>
+              <label class="block text-xs font-semibold text-slate-300 mb-1">World Folder Name</label>
+              <input
+                id="wiz-world-name"
+                type="text"
+                required
+                placeholder="e.g. SurvivalWorld"
+                value="BedrockWorld"
+                class="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500"
+              />
+            </div>
+
+            <div>
+              <div class="flex items-center justify-between mb-1">
+                <label class="block text-xs font-semibold text-slate-300">World Seed</label>
+                <div class="flex items-center gap-2">
+                  <select
+                    id="wiz-seed-preset"
+                    onchange="if(this.value){document.getElementById('wiz-seed').value=this.value; this.value='';}"
+                    class="bg-slate-900 border border-slate-700 rounded px-1.5 py-0.5 text-[10px] text-sky-300 focus:outline-none"
+                  >
+                    <option value="">★ Famous Seeds...</option>
+                    <option value="1669320484">🌸 Cherry Grove Crater Village</option>
+                    <option value="-1337710146">🌿 Lush Cave &amp; Mansion Spawn</option>
+                    <option value="8675309">🏝 Classic Island &amp; Coral Reef</option>
+                    <option value="-4530634556500121041">🕯 Deep Dark Ancient City Spawn</option>
+                    <option value="202619132">🍄 Mushroom Island Archipelago</option>
+                    <option value="7099328885282232224">🏔 Frozen Peaks &amp; Pillager Outpost</option>
+                  </select>
+                  <button type="button" onclick="randomizeSeed()" class="text-[11px] text-emerald-400 hover:underline cursor-pointer">🎲 Randomize</button>
+                </div>
+              </div>
+              <input
+                id="wiz-seed"
+                type="text"
+                placeholder="Leave blank for random seed"
+                class="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-sm font-mono text-white focus:outline-none focus:border-emerald-500"
+              />
+            </div>
+
+            <div>
+              <label class="block text-xs font-semibold text-slate-300 mb-1">Default Game Mode</label>
+              <select
+                id="wiz-gamemode"
+                class="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500"
+              >
+                <option value="survival">Survival</option>
+                <option value="creative">Creative</option>
+                <option value="adventure">Adventure</option>
+                <option value="spectator">Spectator</option>
+              </select>
+            </div>
+
+            <div>
+              <label class="block text-xs font-semibold text-slate-300 mb-1">Difficulty</label>
+              <select
+                id="wiz-difficulty"
+                class="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500"
+              >
+                <option value="normal" selected>Normal</option>
+                <option value="easy">Easy</option>
+                <option value="hard">Hard</option>
+                <option value="peaceful">Peaceful</option>
+              </select>
+            </div>
+
+            <div>
+              <label class="block text-xs font-semibold text-slate-300 mb-1">World Generator Type</label>
+              <select
+                id="wiz-world-type"
+                class="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500"
+              >
+                <option value="DEFAULT" selected>Infinite World (Standard Terrain)</option>
+                <option value="FLAT">Superflat World (Flat Grass Layers)</option>
+                <option value="LEGACY">Old / Limited World (256×256 Classic)</option>
+              </select>
+            </div>
+
+            <div>
+              <label class="block text-xs font-semibold text-slate-300 mb-1">Max Players (1–200)</label>
+              <input
+                id="wiz-max-players"
+                type="number"
+                min="1"
+                max="200"
+                value="10"
+                required
+                class="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-sm font-mono text-white focus:outline-none focus:border-emerald-500"
+              />
+            </div>
           </div>
 
-          <div>
-            <label class="block text-xs font-semibold text-slate-300 mb-1">Game Mode</label>
-            <select
-              id="wiz-gamemode"
-              class="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500"
-            >
-              <option value="survival">Survival</option>
-              <option value="creative">Creative</option>
-              <option value="adventure">Adventure</option>
-              <option value="spectator">Spectator</option>
-            </select>
-          </div>
+          <!-- Hardcore Mode Highlight Card -->
+          <label class="flex items-start justify-between gap-4 p-4 rounded-xl bg-rose-950/25 border border-rose-500/30 hover:border-rose-500/50 cursor-pointer transition">
+            <div>
+              <div class="text-sm font-bold text-rose-300 flex items-center gap-2">
+                <span>💀 Hardcore Mode</span>
+                <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-rose-500/20 text-rose-200 border border-rose-500/30">IsHardcore=1</span>
+              </div>
+              <p class="text-xs text-slate-400 mt-1">
+                Locks difficulty to <strong>Hard</strong> with Hardcore hearts. Players only have one life — upon death they cannot respawn and are switched to Spectator mode.
+              </p>
+            </div>
+            <input id="opt-hardcore" type="checkbox" onchange="onHardcoreChange()" class="mt-1 h-5 w-5 accent-rose-500 rounded cursor-pointer shrink-0" />
+          </label>
 
-          <div>
-            <label class="block text-xs font-semibold text-slate-300 mb-1">Difficulty</label>
-            <select
-              id="wiz-difficulty"
-              class="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500"
-            >
-              <option value="normal" selected>Normal</option>
-              <option value="easy">Easy</option>
-              <option value="hard">Hard</option>
-              <option value="peaceful">Peaceful</option>
-            </select>
-          </div>
+          <!-- Force Gamemode Toggle -->
+          <label class="flex items-center justify-between gap-4 p-3.5 rounded-xl bg-slate-950/70 border border-slate-800 hover:border-slate-700 cursor-pointer">
+            <div>
+              <div class="text-xs font-semibold text-white">Force Default Game Mode on Join (<code class="text-emerald-400">force-gamemode</code>)</div>
+              <p class="text-[11px] text-slate-400">Forces returning players back into the server's default game mode whenever they connect.</p>
+            </div>
+            <input id="opt-force_gamemode" type="checkbox" class="h-4 w-4 accent-emerald-500 rounded cursor-pointer shrink-0" />
+          </label>
+        </div>
 
-          <div class="sm:col-span-2">
-            <label class="block text-xs font-semibold text-slate-300 mb-1">Max Players</label>
-            <input
-              id="wiz-max-players"
-              type="number"
-              min="1"
-              max="200"
-              value="10"
-              required
-              class="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-sm font-mono text-white focus:outline-none focus:border-emerald-500"
-            />
+        <!-- TAB 2: Starter Gear & HUD (Bonus Chest, Starting Map, Coordinates, Days Played) -->
+        <div id="wtab-panel-starter" class="hidden space-y-3">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <label class="flex items-start justify-between gap-3 p-3.5 rounded-xl bg-amber-950/20 border border-amber-500/30 hover:border-amber-500/50 cursor-pointer">
+              <div>
+                <div class="text-xs font-bold text-amber-300">📦 Starting Bonus Chest</div>
+                <p class="text-[11px] text-slate-400 mt-0.5">Spawns a starter chest filled with wood, stone tools, bread, and saplings right next to world spawn.</p>
+              </div>
+              <input id="opt-bonus_chest" type="checkbox" class="mt-0.5 h-4 w-4 accent-amber-500 rounded cursor-pointer shrink-0" />
+            </label>
+
+            <label class="flex items-start justify-between gap-3 p-3.5 rounded-xl bg-sky-950/20 border border-sky-500/30 hover:border-sky-500/50 cursor-pointer">
+              <div>
+                <div class="text-xs font-bold text-sky-300">🗺 Starting Locator Map</div>
+                <p class="text-[11px] text-slate-400 mt-0.5">Every new player automatically receives an Empty Locator Map in their inventory when spawning.</p>
+              </div>
+              <input id="opt-starting_map" type="checkbox" class="mt-0.5 h-4 w-4 accent-sky-500 rounded cursor-pointer shrink-0" />
+            </label>
+
+            <label class="flex items-start justify-between gap-3 p-3.5 rounded-xl bg-emerald-950/20 border border-emerald-500/30 hover:border-emerald-500/50 cursor-pointer">
+              <div>
+                <div class="text-xs font-bold text-emerald-300">📍 Show Player Coordinates</div>
+                <p class="text-[11px] text-slate-400 mt-0.5">Displays live <code class="text-emerald-200">Position: X, Y, Z</code> coordinates in the top-left HUD for all players.</p>
+              </div>
+              <input id="opt-show_coordinates" type="checkbox" checked class="mt-0.5 h-4 w-4 accent-emerald-500 rounded cursor-pointer shrink-0" />
+            </label>
+
+            <label class="flex items-start justify-between gap-3 p-3.5 rounded-xl bg-purple-950/20 border border-purple-500/30 hover:border-purple-500/50 cursor-pointer">
+              <div>
+                <div class="text-xs font-bold text-purple-300">📅 Show Days Played Counter</div>
+                <p class="text-[11px] text-slate-400 mt-0.5">Displays the total in-game <code class="text-purple-200">Days Played</code> counter on the HUD below coordinates.</p>
+              </div>
+              <input id="opt-show_days_played" type="checkbox" class="mt-0.5 h-4 w-4 accent-purple-500 rounded cursor-pointer shrink-0" />
+            </label>
+
+            <label class="flex items-start justify-between gap-3 p-3 rounded-xl bg-slate-950/70 border border-slate-800 cursor-pointer">
+              <div>
+                <div class="text-xs font-semibold text-white">🧭 Player Waypoints / Locator Bar</div>
+                <p class="text-[11px] text-slate-400">Shows player directional locator markers in multiplayer.</p>
+              </div>
+              <input id="opt-player_locator" type="checkbox" checked class="mt-0.5 h-4 w-4 accent-emerald-500 rounded cursor-pointer shrink-0" />
+            </label>
+
+            <label class="flex items-start justify-between gap-3 p-3 rounded-xl bg-slate-950/70 border border-slate-800 cursor-pointer">
+              <div>
+                <div class="text-xs font-semibold text-white">📖 Recipe Unlocking System</div>
+                <p class="text-[11px] text-slate-400">Unlocks crafting recipes progressively as players gather new materials.</p>
+              </div>
+              <input id="opt-recipes_unlock" type="checkbox" checked class="mt-0.5 h-4 w-4 accent-emerald-500 rounded cursor-pointer shrink-0" />
+            </label>
+
+            <label class="flex items-start justify-between gap-3 p-3 rounded-xl bg-slate-950/70 border border-slate-800 cursor-pointer">
+              <div>
+                <div class="text-xs font-semibold text-white">🔒 Require Unlocked Recipes to Craft</div>
+                <p class="text-[11px] text-slate-400">Restricts players to only crafting recipes they have discovered (<code class="text-slate-300">dolimitedcrafting</code>).</p>
+              </div>
+              <input id="opt-limited_crafting" type="checkbox" class="mt-0.5 h-4 w-4 accent-emerald-500 rounded cursor-pointer shrink-0" />
+            </label>
+
+            <label class="flex items-start justify-between gap-3 p-3 rounded-xl bg-slate-950/70 border border-slate-800 cursor-pointer">
+              <div>
+                <div class="text-xs font-semibold text-white">🔔 Show New Recipe Notifications</div>
+                <p class="text-[11px] text-slate-400">Displays top-right toast popups when new crafting recipes unlock.</p>
+              </div>
+              <input id="opt-show_recipe_messages" type="checkbox" checked class="mt-0.5 h-4 w-4 accent-emerald-500 rounded cursor-pointer shrink-0" />
+            </label>
+
+            <label class="flex items-start justify-between gap-3 p-3 rounded-xl bg-slate-950/70 border border-slate-800 cursor-pointer">
+              <div>
+                <div class="text-xs font-semibold text-white">💬 Show Death Messages in Chat</div>
+                <p class="text-[11px] text-slate-400">Broadcasts how players and named pets died in server chat.</p>
+              </div>
+              <input id="opt-show_death_messages" type="checkbox" checked class="mt-0.5 h-4 w-4 accent-emerald-500 rounded cursor-pointer shrink-0" />
+            </label>
+
+            <label class="flex items-start justify-between gap-3 p-3 rounded-xl bg-slate-950/70 border border-slate-800 cursor-pointer">
+              <div>
+                <div class="text-xs font-semibold text-white">🏷 Show Item NBT Component Tags</div>
+                <p class="text-[11px] text-slate-400">Displays CanPlaceOn / CanDestroy tags on item tooltips (<code class="text-slate-300">showtags</code>).</p>
+              </div>
+              <input id="opt-show_tags" type="checkbox" checked class="mt-0.5 h-4 w-4 accent-emerald-500 rounded cursor-pointer shrink-0" />
+            </label>
+
+            <label class="flex items-start justify-between gap-3 p-3 rounded-xl bg-slate-950/70 border border-slate-800 cursor-pointer sm:col-span-2">
+              <div>
+                <div class="text-xs font-semibold text-white">✨ Show World Border Particle Effects</div>
+                <p class="text-[11px] text-slate-400">Renders visual particle effects near border blocks (<code class="text-slate-300">showbordereffect</code>).</p>
+              </div>
+              <input id="opt-show_border_effect" type="checkbox" checked class="mt-0.5 h-4 w-4 accent-emerald-500 rounded cursor-pointer shrink-0" />
+            </label>
           </div>
         </div>
 
-        <div class="rounded-lg bg-slate-950/90 border border-slate-800 p-3 text-xs text-slate-400 flex items-center justify-between">
-          <span>Internal UDP Port Allocation</span>
-          <span class="font-mono text-emerald-400">Auto-Assigned (19133+)</span>
+        <!-- TAB 3: Combat, Survival, Death & Sleep Rules -->
+        <div id="wtab-panel-survival" class="hidden space-y-3">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <label class="flex items-start justify-between gap-3 p-3.5 rounded-xl bg-sky-950/20 border border-sky-500/30 cursor-pointer">
+              <div>
+                <div class="text-xs font-bold text-sky-300">🛡 Keep Inventory on Death</div>
+                <p class="text-[11px] text-slate-400 mt-0.5">Players retain all inventory items and XP levels when they die (<code class="text-sky-200">keepinventory</code>).</p>
+              </div>
+              <input id="opt-keep_inventory" type="checkbox" class="mt-0.5 h-4 w-4 accent-sky-500 rounded cursor-pointer shrink-0" />
+            </label>
+
+            <label class="flex items-start justify-between gap-3 p-3.5 rounded-xl bg-rose-950/20 border border-rose-500/30 cursor-pointer">
+              <div>
+                <div class="text-xs font-bold text-rose-300">⚔ Friendly Fire / PvP Combat</div>
+                <p class="text-[11px] text-slate-400 mt-0.5">Allows players to deal melee and projectile damage to each other (<code class="text-rose-200">pvp</code>).</p>
+              </div>
+              <input id="opt-pvp" type="checkbox" checked class="mt-0.5 h-4 w-4 accent-rose-500 rounded cursor-pointer shrink-0" />
+            </label>
+
+            <label class="flex items-start justify-between gap-3 p-3 rounded-xl bg-slate-950/70 border border-slate-800 cursor-pointer">
+              <div>
+                <div class="text-xs font-semibold text-white">⚡ Immediate Respawn (Skip Death Screen)</div>
+                <p class="text-[11px] text-slate-400">Respawns players instantaneously without showing the "You Died" prompt.</p>
+              </div>
+              <input id="opt-immediate_respawn" type="checkbox" class="mt-0.5 h-4 w-4 accent-emerald-500 rounded cursor-pointer shrink-0" />
+            </label>
+
+            <label class="flex items-start justify-between gap-3 p-3 rounded-xl bg-slate-950/70 border border-slate-800 cursor-pointer">
+              <div>
+                <div class="text-xs font-semibold text-white">❤ Natural Health Regeneration</div>
+                <p class="text-[11px] text-slate-400">Players naturally regenerate health when their hunger bar is full (disable for Ultra Hardcore).</p>
+              </div>
+              <input id="opt-natural_regeneration" type="checkbox" checked class="mt-0.5 h-4 w-4 accent-emerald-500 rounded cursor-pointer shrink-0" />
+            </label>
+
+            <label class="flex items-start justify-between gap-3 p-3 rounded-xl bg-slate-950/70 border border-slate-800 cursor-pointer">
+              <div>
+                <div class="text-xs font-semibold text-white">🦶 Fall Damage Enabled</div>
+                <p class="text-[11px] text-slate-400">Players take damage when falling more than 3 blocks.</p>
+              </div>
+              <input id="opt-fall_damage" type="checkbox" checked class="mt-0.5 h-4 w-4 accent-emerald-500 rounded cursor-pointer shrink-0" />
+            </label>
+
+            <label class="flex items-start justify-between gap-3 p-3 rounded-xl bg-slate-950/70 border border-slate-800 cursor-pointer">
+              <div>
+                <div class="text-xs font-semibold text-white">🔥 Fire &amp; Lava Damage Enabled</div>
+                <p class="text-[11px] text-slate-400">Players take burn damage from fire, lava, campfires, and magma blocks.</p>
+              </div>
+              <input id="opt-fire_damage" type="checkbox" checked class="mt-0.5 h-4 w-4 accent-emerald-500 rounded cursor-pointer shrink-0" />
+            </label>
+
+            <label class="flex items-start justify-between gap-3 p-3 rounded-xl bg-slate-950/70 border border-slate-800 cursor-pointer">
+              <div>
+                <div class="text-xs font-semibold text-white">🫧 Drowning Damage Enabled</div>
+                <p class="text-[11px] text-slate-400">Players take damage when running out of oxygen underwater.</p>
+              </div>
+              <input id="opt-drowning_damage" type="checkbox" checked class="mt-0.5 h-4 w-4 accent-emerald-500 rounded cursor-pointer shrink-0" />
+            </label>
+
+            <label class="flex items-start justify-between gap-3 p-3 rounded-xl bg-slate-950/70 border border-slate-800 cursor-pointer">
+              <div>
+                <div class="text-xs font-semibold text-white">❄ Powder Snow Freeze Damage</div>
+                <p class="text-[11px] text-slate-400">Players take freezing damage inside powder snow blocks.</p>
+              </div>
+              <input id="opt-freeze_damage" type="checkbox" checked class="mt-0.5 h-4 w-4 accent-emerald-500 rounded cursor-pointer shrink-0" />
+            </label>
+
+            <div class="p-3.5 rounded-xl bg-slate-950/70 border border-slate-800">
+              <div class="flex items-center justify-between mb-1">
+                <label class="text-xs font-semibold text-white">😴 Players Sleeping % to Skip Night</label>
+                <div class="flex items-center gap-1 text-[10px] font-mono">
+                  <button type="button" onclick="document.getElementById('opt-players_sleeping_percentage').value=1" class="px-1.5 py-0.5 rounded bg-emerald-900/50 text-emerald-300 border border-emerald-700/50 cursor-pointer">1-Player (1%)</button>
+                  <button type="button" onclick="document.getElementById('opt-players_sleeping_percentage').value=50" class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 cursor-pointer">50%</button>
+                  <button type="button" onclick="document.getElementById('opt-players_sleeping_percentage').value=100" class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 cursor-pointer">100%</button>
+                </div>
+              </div>
+              <input id="opt-players_sleeping_percentage" type="number" min="0" max="100" value="100" class="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-1.5 text-xs font-mono text-white" />
+              <p class="text-[10px] text-slate-400 mt-1">Set to <strong>1</strong> so a single player sleeping in a bed skips the night for everyone.</p>
+            </div>
+
+            <div class="p-3.5 rounded-xl bg-slate-950/70 border border-slate-800">
+              <label class="block text-xs font-semibold text-white mb-1">🎯 World Spawn Respawn Radius (Blocks)</label>
+              <input id="opt-spawn_radius" type="number" min="0" max="128" value="5" class="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-1.5 text-xs font-mono text-white" />
+              <p class="text-[10px] text-slate-400 mt-1">Radius around the world spawn point where players without a bed will spawn (0 = exact block).</p>
+            </div>
+          </div>
         </div>
 
-        <div class="flex items-center justify-end gap-3 pt-2">
-          <button
-            type="button"
-            onclick="closeCreateModal()"
-            class="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold cursor-pointer"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            class="px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-lg cursor-pointer"
-          >
-            Create &amp; Write server.properties
-          </button>
+        <!-- TAB 4: World Cycle, Mobs, Drops & TNT -->
+        <div id="wtab-panel-mobs" class="hidden space-y-3">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <label class="flex items-start justify-between gap-3 p-3 rounded-xl bg-slate-950/70 border border-slate-800 cursor-pointer">
+              <div>
+                <div class="text-xs font-semibold text-white">☀ Daylight Cycle (Time Advances)</div>
+                <p class="text-[11px] text-slate-400">Sun and moon progress naturally across the sky (<code class="text-slate-300">dodaylightcycle</code>).</p>
+              </div>
+              <input id="opt-daylight_cycle" type="checkbox" checked class="mt-0.5 h-4 w-4 accent-emerald-500 rounded cursor-pointer shrink-0" />
+            </label>
+
+            <label class="flex items-start justify-between gap-3 p-3 rounded-xl bg-slate-950/70 border border-slate-800 cursor-pointer">
+              <div>
+                <div class="text-xs font-semibold text-white">🌧 Weather Cycle (Rain &amp; Thunder)</div>
+                <p class="text-[11px] text-slate-400">Weather transitions naturally between clear, rain, and storms (<code class="text-slate-300">doweathercycle</code>).</p>
+              </div>
+              <input id="opt-weather_cycle" type="checkbox" checked class="mt-0.5 h-4 w-4 accent-emerald-500 rounded cursor-pointer shrink-0" />
+            </label>
+
+            <label class="flex items-start justify-between gap-3 p-3 rounded-xl bg-slate-950/70 border border-slate-800 cursor-pointer">
+              <div>
+                <div class="text-xs font-semibold text-white">🧟 Natural Mob Spawning</div>
+                <p class="text-[11px] text-slate-400">Allows passive and hostile mobs to spawn naturally (<code class="text-slate-300">domobspawning</code>).</p>
+              </div>
+              <input id="opt-mob_spawning" type="checkbox" checked class="mt-0.5 h-4 w-4 accent-emerald-500 rounded cursor-pointer shrink-0" />
+            </label>
+
+            <label class="flex items-start justify-between gap-3 p-3 rounded-xl bg-slate-950/70 border border-slate-800 cursor-pointer">
+              <div>
+                <div class="text-xs font-semibold text-white">💥 Mob Griefing (Creeper / Enderman / Ghast)</div>
+                <p class="text-[11px] text-slate-400">Disable to stop Creepers from blowing up builds and Endermen from moving blocks.</p>
+              </div>
+              <input id="opt-mob_griefing" type="checkbox" checked class="mt-0.5 h-4 w-4 accent-emerald-500 rounded cursor-pointer shrink-0" />
+            </label>
+
+            <label class="flex items-start justify-between gap-3 p-3 rounded-xl bg-slate-950/70 border border-slate-800 cursor-pointer">
+              <div>
+                <div class="text-xs font-semibold text-white">🦇 Insomnia (Night Phantom Spawning)</div>
+                <p class="text-[11px] text-slate-400">Spawns flying Phantoms at night when players haven't slept for 3+ days (<code class="text-slate-300">doinsomnia</code>).</p>
+              </div>
+              <input id="opt-insomnia" type="checkbox" checked class="mt-0.5 h-4 w-4 accent-emerald-500 rounded cursor-pointer shrink-0" />
+            </label>
+
+            <label class="flex items-start justify-between gap-3 p-3 rounded-xl bg-slate-950/70 border border-slate-800 cursor-pointer">
+              <div>
+                <div class="text-xs font-semibold text-white">🔥 Fire Spreads &amp; Burns Blocks</div>
+                <p class="text-[11px] text-slate-400">Disable to prevent fire and lava from burning down wooden structures (<code class="text-slate-300">dofiretick</code>).</p>
+              </div>
+              <input id="opt-fire_spreads" type="checkbox" checked class="mt-0.5 h-4 w-4 accent-emerald-500 rounded cursor-pointer shrink-0" />
+            </label>
+
+            <label class="flex items-start justify-between gap-3 p-3 rounded-xl bg-slate-950/70 border border-slate-800 cursor-pointer">
+              <div>
+                <div class="text-xs font-semibold text-white">🧨 TNT Explodes</div>
+                <p class="text-[11px] text-slate-400">Allows ignited TNT blocks to detonate (<code class="text-slate-300">tntexplodes</code>).</p>
+              </div>
+              <input id="opt-tnt_explodes" type="checkbox" checked class="mt-0.5 h-4 w-4 accent-emerald-500 rounded cursor-pointer shrink-0" />
+            </label>
+
+            <label class="flex items-start justify-between gap-3 p-3 rounded-xl bg-slate-950/70 border border-slate-800 cursor-pointer">
+              <div>
+                <div class="text-xs font-semibold text-white">💣 TNT Explosion Drop Decay</div>
+                <p class="text-[11px] text-slate-400">When off, 100% of blocks broken by TNT drop as items.</p>
+              </div>
+              <input id="opt-tnt_explosion_drop_decay" type="checkbox" checked class="mt-0.5 h-4 w-4 accent-emerald-500 rounded cursor-pointer shrink-0" />
+            </label>
+
+            <label class="flex items-start justify-between gap-3 p-3 rounded-xl bg-slate-950/70 border border-slate-800 cursor-pointer">
+              <div>
+                <div class="text-xs font-semibold text-white">🛏 Beds &amp; Respawn Anchors Explode</div>
+                <p class="text-[11px] text-slate-400">Beds explode in Nether/End and Respawn Anchors explode in Overworld.</p>
+              </div>
+              <input id="opt-respawn_blocks_explode" type="checkbox" checked class="mt-0.5 h-4 w-4 accent-emerald-500 rounded cursor-pointer shrink-0" />
+            </label>
+
+            <label class="flex items-start justify-between gap-3 p-3 rounded-xl bg-slate-950/70 border border-slate-800 cursor-pointer">
+              <div>
+                <div class="text-xs font-semibold text-white">🍖 Mob Loot Drops</div>
+                <p class="text-[11px] text-slate-400">Mobs drop items and XP orbs when defeated (<code class="text-slate-300">domobloot</code>).</p>
+              </div>
+              <input id="opt-mob_loot" type="checkbox" checked class="mt-0.5 h-4 w-4 accent-emerald-500 rounded cursor-pointer shrink-0" />
+            </label>
+
+            <label class="flex items-start justify-between gap-3 p-3 rounded-xl bg-slate-950/70 border border-slate-800 cursor-pointer">
+              <div>
+                <div class="text-xs font-semibold text-white">🧱 Block / Tile Drops when Mined</div>
+                <p class="text-[11px] text-slate-400">Blocks drop their item form when mined or broken (<code class="text-slate-300">dotiledrops</code>).</p>
+              </div>
+              <input id="opt-tile_drops" type="checkbox" checked class="mt-0.5 h-4 w-4 accent-emerald-500 rounded cursor-pointer shrink-0" />
+            </label>
+
+            <label class="flex items-start justify-between gap-3 p-3 rounded-xl bg-slate-950/70 border border-slate-800 cursor-pointer">
+              <div>
+                <div class="text-xs font-semibold text-white">🛶 Entity Drops (Boats, Minecarts, Frames)</div>
+                <p class="text-[11px] text-slate-400">Non-mob entities drop their item when broken (<code class="text-slate-300">doentitydrops</code>).</p>
+              </div>
+              <input id="opt-entity_drops" type="checkbox" checked class="mt-0.5 h-4 w-4 accent-emerald-500 rounded cursor-pointer shrink-0" />
+            </label>
+
+            <label class="flex items-start justify-between gap-3 p-3 rounded-xl bg-slate-950/70 border border-slate-800 cursor-pointer">
+              <div>
+                <div class="text-xs font-semibold text-white">🏹 Projectiles Break Chorus &amp; Pots</div>
+                <p class="text-[11px] text-slate-400">Arrows and tridents can shatter Chorus Flowers and Decorated Pots.</p>
+              </div>
+              <input id="opt-projectiles_can_break_blocks" type="checkbox" checked class="mt-0.5 h-4 w-4 accent-emerald-500 rounded cursor-pointer shrink-0" />
+            </label>
+
+            <div class="p-3 rounded-xl bg-slate-950/70 border border-slate-800">
+              <div class="flex items-center justify-between mb-1">
+                <label class="text-xs font-semibold text-white">🌱 Random Tick Speed (Crop/Leaf Growth)</label>
+                <span class="text-[10px] font-mono text-slate-400">Default: 1</span>
+              </div>
+              <input id="opt-random_tick_speed" type="number" min="0" max="4096" value="1" class="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-1.5 text-xs font-mono text-white" />
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 5: Cheats, Permissions, Commands & Education -->
+        <div id="wtab-panel-cheats" class="hidden space-y-3">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <label class="flex items-start justify-between gap-3 p-3.5 rounded-xl bg-emerald-950/20 border border-emerald-500/30 cursor-pointer">
+              <div>
+                <div class="text-xs font-bold text-emerald-300">✨ Allow Cheats &amp; Console Gamerules</div>
+                <p class="text-[11px] text-slate-400 mt-0.5">Enables operator slash commands (<code class="text-emerald-200">/tp, /give, /gamemode, /gamerule</code>) in-game and from the web console.</p>
+              </div>
+              <input id="opt-allow_cheats" type="checkbox" checked class="mt-0.5 h-4 w-4 accent-emerald-500 rounded cursor-pointer shrink-0" />
+            </label>
+
+            <div class="p-3.5 rounded-xl bg-slate-950/70 border border-slate-800">
+              <label class="block text-xs font-semibold text-white mb-1">👤 Default Player Permission Level on Join</label>
+              <select id="opt-default_permission_level" class="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-1.5 text-xs text-white">
+                <option value="member" selected>Member (Can build, mine, and interact)</option>
+                <option value="operator">Operator (Full admin commands &amp; creative access)</option>
+                <option value="visitor">Visitor (Read-only spectator / cannot break blocks)</option>
+              </select>
+            </div>
+
+            <label class="flex items-start justify-between gap-3 p-3 rounded-xl bg-slate-950/70 border border-slate-800 cursor-pointer">
+              <div>
+                <div class="text-xs font-semibold text-white">🟧 Command Blocks Enabled</div>
+                <p class="text-[11px] text-slate-400">Allows Impulse, Chain, and Repeating Command Blocks to execute (<code class="text-slate-300">commandblocksenabled</code>).</p>
+              </div>
+              <input id="opt-command_blocks_enabled" type="checkbox" checked class="mt-0.5 h-4 w-4 accent-emerald-500 rounded cursor-pointer shrink-0" />
+            </label>
+
+            <label class="flex items-start justify-between gap-3 p-3 rounded-xl bg-slate-950/70 border border-slate-800 cursor-pointer">
+              <div>
+                <div class="text-xs font-semibold text-white">📢 Broadcast Command Block Output</div>
+                <p class="text-[11px] text-slate-400">Logs command block execution messages to operators (<code class="text-slate-300">commandblockoutput</code>).</p>
+              </div>
+              <input id="opt-command_block_output" type="checkbox" checked class="mt-0.5 h-4 w-4 accent-emerald-500 rounded cursor-pointer shrink-0" />
+            </label>
+
+            <label class="flex items-start justify-between gap-3 p-3 rounded-xl bg-slate-950/70 border border-slate-800 cursor-pointer">
+              <div>
+                <div class="text-xs font-semibold text-white">💬 Send Command Feedback in Chat</div>
+                <p class="text-[11px] text-slate-400">Displays command result messages when players run slash commands.</p>
+              </div>
+              <input id="opt-send_command_feedback" type="checkbox" checked class="mt-0.5 h-4 w-4 accent-emerald-500 rounded cursor-pointer shrink-0" />
+            </label>
+
+            <label class="flex items-start justify-between gap-3 p-3 rounded-xl bg-purple-950/20 border border-purple-500/30 cursor-pointer">
+              <div>
+                <div class="text-xs font-bold text-purple-300">🧪 Education Edition Features (Chemistry)</div>
+                <p class="text-[11px] text-slate-400">Enables Chemistry Lab Tables, Element Constructors, Underwater TNT, and Balloons.</p>
+              </div>
+              <input id="opt-education_features" type="checkbox" class="mt-0.5 h-4 w-4 accent-purple-500 rounded cursor-pointer shrink-0" />
+            </label>
+
+            <label class="flex items-start justify-between gap-3 p-3 rounded-xl bg-slate-950/70 border border-slate-800 cursor-pointer sm:col-span-2">
+              <div>
+                <div class="text-xs font-semibold text-white">🏛 Immutable World (Spawn / Lobby Protection)</div>
+                <p class="text-[11px] text-slate-400">When enabled, non-operator players cannot place or break any blocks anywhere in the world.</p>
+              </div>
+              <input id="opt-immutable_world" type="checkbox" class="mt-0.5 h-4 w-4 accent-emerald-500 rounded cursor-pointer shrink-0" />
+            </label>
+          </div>
+        </div>
+
+        <!-- TAB 6: Performance, Distance, Security & Anti-Cheat -->
+        <div id="wtab-panel-perf" class="hidden space-y-3">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div class="p-3 rounded-xl bg-slate-950/70 border border-slate-800">
+              <label class="block text-xs font-semibold text-white mb-1">🔭 View Distance (Chunks: 4–96)</label>
+              <input id="opt-view_distance" type="number" min="4" max="96" value="32" class="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-1.5 text-xs font-mono text-white" />
+              <p class="text-[10px] text-slate-400 mt-1">Maximum render distance sent by the server (Default: 32 chunks).</p>
+            </div>
+
+            <div class="p-3 rounded-xl bg-slate-950/70 border border-slate-800">
+              <label class="block text-xs font-semibold text-white mb-1">⚙ Simulation / Tick Distance (Chunks: 4–12)</label>
+              <input id="opt-tick_distance" type="number" min="4" max="12" value="4" class="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-1.5 text-xs font-mono text-white" />
+              <p class="text-[10px] text-slate-400 mt-1">Radius of chunks around each player where redstone, mobs, and crops tick (4–12).</p>
+            </div>
+
+            <div class="p-3 rounded-xl bg-slate-950/70 border border-slate-800">
+              <label class="block text-xs font-semibold text-white mb-1">💤 AFK Player Idle Timeout (Minutes, 0 = Off)</label>
+              <input id="opt-player_idle_timeout" type="number" min="0" max="1440" value="30" class="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-1.5 text-xs font-mono text-white" />
+              <p class="text-[10px] text-slate-400 mt-1">Set to 0 to never kick AFK players.</p>
+            </div>
+
+            <div class="p-3 rounded-xl bg-slate-950/70 border border-slate-800">
+              <label class="block text-xs font-semibold text-white mb-1">🧵 Max Server CPU Threads (0 = Auto)</label>
+              <input id="opt-max_threads" type="number" min="0" max="64" value="8" class="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-1.5 text-xs font-mono text-white" />
+              <p class="text-[10px] text-slate-400 mt-1">Maximum worker threads allocated to the Bedrock server process.</p>
+            </div>
+
+            <div class="p-3 rounded-xl bg-slate-950/70 border border-slate-800">
+              <label class="block text-xs font-semibold text-white mb-1">💬 Chat Restriction Level</label>
+              <select id="opt-chat_restriction" class="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-1.5 text-xs text-white">
+                <option value="None" selected>None (Normal Chat)</option>
+                <option value="Dropped">Dropped (Muted for non-operators)</option>
+                <option value="Disabled">Disabled (Chat UI hidden completely)</option>
+              </select>
+            </div>
+
+            <div class="p-3 rounded-xl bg-slate-950/70 border border-slate-800">
+              <label class="block text-xs font-semibold text-white mb-1">🛡 Movement Anti-Cheat Authority</label>
+              <select id="opt-server_authoritative_movement" class="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-1.5 text-xs text-white">
+                <option value="server-auth" selected>server-auth (Standard Server Validation)</option>
+                <option value="server-auth-with-rewind">server-auth-with-rewind (Strict Rewind Correction)</option>
+                <option value="client-auth">client-auth (Client Trusted)</option>
+              </select>
+            </div>
+
+            <label class="flex items-start justify-between gap-3 p-3 rounded-xl bg-slate-950/70 border border-slate-800 cursor-pointer">
+              <div>
+                <div class="text-xs font-semibold text-white">🎮 Require Xbox Live Auth (<code class="text-slate-300">online-mode</code>)</div>
+                <p class="text-[11px] text-slate-400">Keep OFF for effortless LAN / Nintendo Switch / local console connections.</p>
+              </div>
+              <input id="opt-online_mode" type="checkbox" class="mt-0.5 h-4 w-4 accent-emerald-500 rounded cursor-pointer shrink-0" />
+            </label>
+
+            <label class="flex items-start justify-between gap-3 p-3 rounded-xl bg-slate-950/70 border border-slate-800 cursor-pointer">
+              <div>
+                <div class="text-xs font-semibold text-white">📋 Allowlist / Whitelist Only (<code class="text-slate-300">allow-list</code>)</div>
+                <p class="text-[11px] text-slate-400">Only players added via <code class="text-slate-300">allowlist add &lt;name&gt;</code> can join.</p>
+              </div>
+              <input id="opt-allow_list" type="checkbox" class="mt-0.5 h-4 w-4 accent-emerald-500 rounded cursor-pointer shrink-0" />
+            </label>
+
+            <label class="flex items-start justify-between gap-3 p-3 rounded-xl bg-slate-950/70 border border-slate-800 cursor-pointer">
+              <div>
+                <div class="text-xs font-semibold text-white">📦 Force Server Resource Packs</div>
+                <p class="text-[11px] text-slate-400">Requires clients to accept world resource packs before joining.</p>
+              </div>
+              <input id="opt-texturepack_required" type="checkbox" class="mt-0.5 h-4 w-4 accent-emerald-500 rounded cursor-pointer shrink-0" />
+            </label>
+
+            <label class="flex items-start justify-between gap-3 p-3 rounded-xl bg-slate-950/70 border border-slate-800 cursor-pointer">
+              <div>
+                <div class="text-xs font-semibold text-white">🖥 Client-Side Chunk Generation</div>
+                <p class="text-[11px] text-slate-400">Offloads distant visual chunk rendering to capable client devices.</p>
+              </div>
+              <input id="opt-client_side_chunk_generation" type="checkbox" checked class="mt-0.5 h-4 w-4 accent-emerald-500 rounded cursor-pointer shrink-0" />
+            </label>
+
+            <label class="flex items-start justify-between gap-3 p-3 rounded-xl bg-slate-950/70 border border-slate-800 cursor-pointer">
+              <div>
+                <div class="text-xs font-semibold text-white">🚫 Disable Player Interaction</div>
+                <p class="text-[11px] text-slate-400">Prevents players from pushing or interacting with other players.</p>
+              </div>
+              <input id="opt-disable_player_interaction" type="checkbox" class="mt-0.5 h-4 w-4 accent-emerald-500 rounded cursor-pointer shrink-0" />
+            </label>
+
+            <label class="flex items-start justify-between gap-3 p-3 rounded-xl bg-slate-950/70 border border-slate-800 cursor-pointer">
+              <div>
+                <div class="text-xs font-semibold text-white">👕 Disable Custom Imported Skins</div>
+                <p class="text-[11px] text-slate-400">Blocks untrusted custom PNG skin uploads (<code class="text-slate-300">disable-custom-skins</code>).</p>
+              </div>
+              <input id="opt-disable_custom_skins" type="checkbox" class="mt-0.5 h-4 w-4 accent-emerald-500 rounded cursor-pointer shrink-0" />
+            </label>
+
+            <label class="flex items-start justify-between gap-3 p-3 rounded-xl bg-slate-950/70 border border-slate-800 cursor-pointer">
+              <div>
+                <div class="text-xs font-semibold text-white">🎭 Disable Persona Skins</div>
+                <p class="text-[11px] text-slate-400">Disables Character Creator persona cosmetics.</p>
+              </div>
+              <input id="opt-disable_persona" type="checkbox" class="mt-0.5 h-4 w-4 accent-emerald-500 rounded cursor-pointer shrink-0" />
+            </label>
+
+            <label class="flex items-start justify-between gap-3 p-3 rounded-xl bg-slate-950/70 border border-slate-800 cursor-pointer">
+              <div>
+                <div class="text-xs font-semibold text-white">🙌 Disable Emote Chat Announcements</div>
+                <p class="text-[11px] text-slate-400">Hides chat messages when players perform emotes.</p>
+              </div>
+              <input id="opt-disable_emote_chat" type="checkbox" class="mt-0.5 h-4 w-4 accent-emerald-500 rounded cursor-pointer shrink-0" />
+            </label>
+
+            <label class="flex items-start justify-between gap-3 p-3 rounded-xl bg-slate-950/70 border border-slate-800 cursor-pointer sm:col-span-2">
+              <div>
+                <div class="text-xs font-semibold text-white">⛏ Server-Authoritative Block Breaking</div>
+                <p class="text-[11px] text-slate-400">Validates mining speed and reach strictly on the server (<code class="text-slate-300">server-authoritative-block-breaking</code>).</p>
+              </div>
+              <input id="opt-server_authoritative_block_breaking" type="checkbox" class="mt-0.5 h-4 w-4 accent-emerald-500 rounded cursor-pointer shrink-0" />
+            </label>
+          </div>
+        </div>
+
+        <!-- Footer Bar inside Form -->
+        <div class="pt-4 border-t border-slate-800 flex flex-wrap items-center justify-between gap-3">
+          <div class="text-xs text-slate-400 flex items-center gap-2">
+            <span>UDP Port: <strong id="wiz-port-label" class="font-mono text-emerald-400">Auto-Assigned (19133+)</strong></span>
+            <span>•</span>
+            <span>Writes <code class="text-slate-300">server.properties</code> &amp; <code class="text-sky-300">level.dat</code></span>
+          </div>
+
+          <div class="flex items-center gap-3">
+            <button
+              type="button"
+              onclick="closeCreateModal()"
+              class="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              id="wiz-submit-btn"
+              type="submit"
+              class="px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-lg cursor-pointer"
+            >
+              Create Server &amp; Apply All Options
+            </button>
+          </div>
         </div>
       </form>
     </div>
@@ -847,11 +1441,20 @@
               </div>
 
               <!-- Badges Row -->
-              <div class="flex flex-wrap items-center gap-1.5 mb-4 text-[11px] font-mono">
+              <div class="flex flex-wrap items-center gap-1.5 mb-3 text-[11px] font-mono">
                 <span class="px-2 py-0.5 rounded bg-slate-950 text-sky-400 border border-slate-800">UDP :${inst.port}</span>
                 <span class="px-2 py-0.5 rounded bg-slate-950 text-slate-300 border border-slate-800 capitalize">${escapeHtml(inst.gamemode)}</span>
                 <span class="px-2 py-0.5 rounded bg-slate-950 text-slate-300 border border-slate-800 capitalize">${escapeHtml(inst.difficulty)}</span>
                 <span class="px-2 py-0.5 rounded bg-slate-950 text-slate-300 border border-slate-800">${inst.players_online}/${inst.max_players} Players</span>
+                ${inst.options?.hardcore ? `<span class="px-2 py-0.5 rounded bg-rose-950/80 text-rose-300 border border-rose-500/40 font-semibold">💀 HARDCORE</span>` : ''}
+                ${inst.options?.world_type === 'FLAT' ? `<span class="px-2 py-0.5 rounded bg-purple-950/70 text-purple-300 border border-purple-500/40">🌍 FLAT</span>` : ''}
+                ${inst.options?.bonus_chest ? `<span class="px-2 py-0.5 rounded bg-amber-950/70 text-amber-300 border border-amber-500/40">📦 CHEST</span>` : ''}
+                ${inst.options?.starting_map ? `<span class="px-2 py-0.5 rounded bg-sky-950/70 text-sky-300 border border-sky-500/40">🗺 MAP</span>` : ''}
+                ${inst.options?.show_coordinates ? `<span class="px-2 py-0.5 rounded bg-emerald-950/70 text-emerald-300 border border-emerald-500/40">📍 COORDS</span>` : ''}
+                ${inst.options?.show_days_played ? `<span class="px-2 py-0.5 rounded bg-indigo-950/70 text-indigo-300 border border-indigo-500/40">📅 DAYS</span>` : ''}
+                ${inst.options?.keep_inventory ? `<span class="px-2 py-0.5 rounded bg-cyan-950/70 text-cyan-300 border border-cyan-500/40">🛡 KEEP INV</span>` : ''}
+                ${(inst.options?.players_sleeping_percentage ?? 100) <= 50 ? `<span class="px-2 py-0.5 rounded bg-teal-950/70 text-teal-300 border border-teal-500/40">😴 ${inst.options.players_sleeping_percentage}% SLEEP</span>` : ''}
+                ${inst.options?.education_features ? `<span class="px-2 py-0.5 rounded bg-fuchsia-950/70 text-fuchsia-300 border border-fuchsia-500/40">🧪 EDU</span>` : ''}
               </div>
 
               <!-- Live Telemetry Metrics Grid -->
@@ -894,12 +1497,15 @@
                 </button>
               </div>
 
-              <div class="flex items-center justify-between gap-2 pt-1">
-                <button onclick="createBackupFor('${inst.id}')" class="flex-1 py-1 px-2.5 rounded-md bg-slate-800/70 hover:bg-slate-800 text-sky-300 text-[11px] font-mono border border-slate-700/70 transition cursor-pointer">
-                  ⤓ Hot Backup World
+              <div class="flex items-center justify-between gap-1.5 pt-1">
+                <button onclick="openEditModal('${inst.id}')" class="flex-1 py-1 px-2 rounded-md bg-emerald-950/60 hover:bg-emerald-900/60 text-emerald-300 text-[11px] font-mono border border-emerald-700/50 transition cursor-pointer" title="Configure Hardcore, Coordinates, Bonus Chest, Map, and all 44+ Gamerules">
+                  ⚙ World &amp; Rules
                 </button>
-                <button onclick="viewProperties('${inst.id}')" class="py-1 px-2.5 rounded-md bg-slate-800/70 hover:bg-slate-800 text-slate-300 text-[11px] font-mono border border-slate-700/70 transition cursor-pointer">
-                  server.properties
+                <button onclick="createBackupFor('${inst.id}')" class="py-1 px-2 rounded-md bg-slate-800/70 hover:bg-slate-800 text-sky-300 text-[11px] font-mono border border-slate-700/70 transition cursor-pointer" title="Hot Backup World">
+                  ⤓ Backup
+                </button>
+                <button onclick="viewProperties('${inst.id}')" class="py-1 px-2 rounded-md bg-slate-800/70 hover:bg-slate-800 text-slate-300 text-[11px] font-mono border border-slate-700/70 transition cursor-pointer" title="Inspect raw server.properties">
+                  .props
                 </button>
                 <button onclick="deleteInstance('${inst.id}', '${escapeHtml(inst.display_name)}')" class="py-1 px-2 rounded-md bg-slate-900 hover:bg-rose-950 text-slate-400 hover:text-rose-300 text-[11px] font-mono border border-slate-800 transition cursor-pointer" title="Delete instance">
                   🗑
@@ -1265,11 +1871,266 @@
       }
     }
 
-    // Creation Wizard Modal
+    // Comprehensive World & Server Builder / Options Modal
+    const WIZARD_TABS = ['world', 'starter', 'survival', 'mobs', 'cheats', 'perf'];
+
+    const DEFAULT_WIZ_OPTIONS = {
+      hardcore: false,
+      world_type: 'DEFAULT',
+      force_gamemode: false,
+      bonus_chest: false,
+      starting_map: false,
+      show_coordinates: true,
+      show_days_played: false,
+      player_locator: true,
+      recipes_unlock: true,
+      limited_crafting: false,
+      show_recipe_messages: true,
+      show_death_messages: true,
+      show_border_effect: true,
+      show_tags: true,
+      pvp: true,
+      keep_inventory: false,
+      immediate_respawn: false,
+      natural_regeneration: true,
+      fall_damage: true,
+      fire_damage: true,
+      drowning_damage: true,
+      freeze_damage: true,
+      spawn_radius: 5,
+      players_sleeping_percentage: 100,
+      daylight_cycle: true,
+      weather_cycle: true,
+      mob_spawning: true,
+      mob_griefing: true,
+      mob_loot: true,
+      tile_drops: true,
+      entity_drops: true,
+      insomnia: true,
+      fire_spreads: true,
+      tnt_explodes: true,
+      tnt_explosion_drop_decay: true,
+      respawn_blocks_explode: true,
+      projectiles_can_break_blocks: true,
+      random_tick_speed: 1,
+      allow_cheats: true,
+      default_permission_level: 'member',
+      command_blocks_enabled: true,
+      command_block_output: true,
+      send_command_feedback: true,
+      education_features: false,
+      immutable_world: false,
+      online_mode: false,
+      allow_list: false,
+      view_distance: 32,
+      tick_distance: 4,
+      player_idle_timeout: 30,
+      max_threads: 8,
+      chat_restriction: 'None',
+      disable_player_interaction: false,
+      disable_custom_skins: false,
+      disable_persona: false,
+      disable_emote_chat: false,
+      texturepack_required: false,
+      client_side_chunk_generation: true,
+      server_authoritative_movement: 'server-auth',
+      server_authoritative_block_breaking: false
+    };
+
+    const BOOL_OPT_KEYS = [
+      'hardcore', 'force_gamemode', 'bonus_chest', 'starting_map',
+      'show_coordinates', 'show_days_played', 'player_locator', 'recipes_unlock',
+      'limited_crafting', 'show_recipe_messages', 'show_death_messages', 'show_border_effect',
+      'show_tags', 'pvp', 'keep_inventory', 'immediate_respawn',
+      'natural_regeneration', 'fall_damage', 'fire_damage', 'drowning_damage',
+      'freeze_damage', 'daylight_cycle', 'weather_cycle', 'mob_spawning',
+      'mob_griefing', 'mob_loot', 'tile_drops', 'entity_drops',
+      'insomnia', 'fire_spreads', 'tnt_explodes', 'tnt_explosion_drop_decay',
+      'respawn_blocks_explode', 'projectiles_can_break_blocks', 'allow_cheats',
+      'command_blocks_enabled', 'command_block_output', 'send_command_feedback',
+      'education_features', 'immutable_world', 'online_mode', 'allow_list',
+      'disable_player_interaction', 'disable_custom_skins', 'disable_persona',
+      'disable_emote_chat', 'texturepack_required', 'client_side_chunk_generation',
+      'server_authoritative_block_breaking'
+    ];
+
+    const NUM_OPT_KEYS = [
+      'spawn_radius', 'players_sleeping_percentage', 'random_tick_speed',
+      'view_distance', 'tick_distance', 'player_idle_timeout', 'max_threads'
+    ];
+
+    const STR_OPT_KEYS = [
+      'default_permission_level', 'chat_restriction', 'server_authoritative_movement'
+    ];
+
+    function switchWizardTab(tabId) {
+      for (const t of WIZARD_TABS) {
+        const btn = document.getElementById(`wtab-btn-${t}`);
+        const panel = document.getElementById(`wtab-panel-${t}`);
+        if (t === tabId) {
+          btn.className = 'px-3 py-2 rounded-t-lg border-b-2 border-emerald-500 text-emerald-400 bg-slate-900/90 cursor-pointer shrink-0';
+          panel.classList.remove('hidden');
+        } else {
+          btn.className = 'px-3 py-2 rounded-t-lg border-b-2 border-transparent text-slate-400 hover:text-slate-200 cursor-pointer shrink-0';
+          panel.classList.add('hidden');
+        }
+      }
+    }
+
+    function onHardcoreChange() {
+      const hc = document.getElementById('opt-hardcore').checked;
+      const diffEl = document.getElementById('wiz-difficulty');
+      const gmEl = document.getElementById('wiz-gamemode');
+      if (hc) {
+        diffEl.value = 'hard';
+        diffEl.disabled = true;
+        gmEl.value = 'survival';
+      } else {
+        diffEl.disabled = false;
+      }
+    }
+
+    function populateWizardOptions(opts) {
+      const merged = { ...DEFAULT_WIZ_OPTIONS, ...(opts || {}) };
+      document.getElementById('wiz-world-type').value = merged.world_type || 'DEFAULT';
+
+      for (const k of BOOL_OPT_KEYS) {
+        const el = document.getElementById(`opt-${k}`);
+        if (el) el.checked = Boolean(merged[k]);
+      }
+      for (const k of NUM_OPT_KEYS) {
+        const el = document.getElementById(`opt-${k}`);
+        if (el) el.value = merged[k] ?? DEFAULT_WIZ_OPTIONS[k];
+      }
+      for (const k of STR_OPT_KEYS) {
+        const el = document.getElementById(`opt-${k}`);
+        if (el) el.value = merged[k] || DEFAULT_WIZ_OPTIONS[k];
+      }
+      onHardcoreChange();
+    }
+
+    function collectWizardOptions() {
+      const opts = {
+        world_type: document.getElementById('wiz-world-type').value || 'DEFAULT'
+      };
+      for (const k of BOOL_OPT_KEYS) {
+        const el = document.getElementById(`opt-${k}`);
+        opts[k] = el ? Boolean(el.checked) : DEFAULT_WIZ_OPTIONS[k];
+      }
+      for (const k of NUM_OPT_KEYS) {
+        const el = document.getElementById(`opt-${k}`);
+        const parsed = el ? parseInt(el.value, 10) : NaN;
+        opts[k] = Number.isNaN(parsed) ? DEFAULT_WIZ_OPTIONS[k] : parsed;
+      }
+      for (const k of STR_OPT_KEYS) {
+        const el = document.getElementById(`opt-${k}`);
+        opts[k] = el ? el.value : DEFAULT_WIZ_OPTIONS[k];
+      }
+      return opts;
+    }
+
+    function applyWorldPreset(presetKey) {
+      let base = { ...DEFAULT_WIZ_OPTIONS };
+      if (presetKey === 'standard') {
+        document.getElementById('wiz-gamemode').value = 'survival';
+        document.getElementById('wiz-difficulty').value = 'normal';
+        base.show_coordinates = true;
+      } else if (presetKey === 'coop_starter') {
+        document.getElementById('wiz-gamemode').value = 'survival';
+        document.getElementById('wiz-difficulty').value = 'normal';
+        base.bonus_chest = true;
+        base.starting_map = true;
+        base.show_coordinates = true;
+        base.show_days_played = true;
+        base.players_sleeping_percentage = 1;
+        base.pvp = false;
+      } else if (presetKey === 'hardcore') {
+        document.getElementById('wiz-gamemode').value = 'survival';
+        document.getElementById('wiz-difficulty').value = 'hard';
+        base.hardcore = true;
+        base.show_coordinates = true;
+        base.show_days_played = true;
+      } else if (presetKey === 'casual') {
+        document.getElementById('wiz-gamemode').value = 'survival';
+        document.getElementById('wiz-difficulty').value = 'easy';
+        base.bonus_chest = true;
+        base.starting_map = true;
+        base.show_coordinates = true;
+        base.show_days_played = true;
+        base.keep_inventory = true;
+        base.mob_griefing = false;
+        base.fire_spreads = false;
+        base.insomnia = false;
+        base.players_sleeping_percentage = 1;
+        base.pvp = false;
+      } else if (presetKey === 'flat_creative') {
+        document.getElementById('wiz-gamemode').value = 'creative';
+        document.getElementById('wiz-difficulty').value = 'peaceful';
+        base.world_type = 'FLAT';
+        base.show_coordinates = true;
+        base.daylight_cycle = false;
+        base.weather_cycle = false;
+        base.mob_spawning = false;
+        base.mob_griefing = false;
+      } else if (presetKey === 'pvp_arena') {
+        document.getElementById('wiz-gamemode').value = 'adventure';
+        document.getElementById('wiz-difficulty').value = 'normal';
+        base.pvp = true;
+        base.keep_inventory = true;
+        base.immediate_respawn = true;
+        base.mob_griefing = false;
+        base.tnt_explodes = false;
+        base.fire_spreads = false;
+        base.immutable_world = true;
+        base.show_coordinates = true;
+      }
+      populateWizardOptions(base);
+      showToast(`Applied <strong>${escapeHtml(presetKey.replace('_', ' ').toUpperCase())}</strong> preset options.`, 'info');
+    }
+
     function openCreateModal() {
+      document.getElementById('wiz-edit-instance-id').value = '';
+      document.getElementById('wiz-modal-title').innerHTML = `
+        <span>Create &amp; Configure New Bedrock Server</span>
+        <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">NEW INSTANCE</span>
+      `;
+      document.getElementById('wiz-submit-btn').textContent = 'Create Server & Apply All Options';
+      document.getElementById('wiz-port-label').textContent = 'Auto-Assigned (19133+)';
+      document.getElementById('wiz-display-name').value = '';
+      document.getElementById('wiz-world-name').value = 'BedrockWorld';
+      document.getElementById('wiz-seed').value = '';
+      document.getElementById('wiz-gamemode').value = 'survival';
+      document.getElementById('wiz-difficulty').value = 'normal';
+      document.getElementById('wiz-max-players').value = '10';
+      populateWizardOptions(DEFAULT_WIZ_OPTIONS);
+      switchWizardTab('world');
       document.getElementById('create-modal').classList.remove('hidden');
       document.getElementById('create-modal').classList.add('flex');
       document.getElementById('wiz-display-name').focus();
+    }
+
+    function openEditModal(instanceId) {
+      const inst = state.instances.find(i => i.id === instanceId);
+      if (!inst) return;
+      document.getElementById('wiz-edit-instance-id').value = inst.id;
+      document.getElementById('wiz-modal-title').innerHTML = `
+        <span>Configure World &amp; Rules: ${escapeHtml(inst.display_name)}</span>
+        <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-sky-500/20 text-sky-300 border border-sky-500/30">UDP :${inst.port}</span>
+      `;
+      document.getElementById('wiz-submit-btn').textContent = inst.status === 'online'
+        ? 'Save & Apply Live Gamerules Now'
+        : 'Save Server & World Options';
+      document.getElementById('wiz-port-label').textContent = `UDP :${inst.port} (IPv6 :${inst.ipv6_port})`;
+      document.getElementById('wiz-display-name').value = inst.display_name || '';
+      document.getElementById('wiz-world-name').value = inst.world_name || 'BedrockWorld';
+      document.getElementById('wiz-seed').value = inst.seed || '';
+      document.getElementById('wiz-gamemode').value = inst.gamemode || 'survival';
+      document.getElementById('wiz-difficulty').value = inst.difficulty || 'normal';
+      document.getElementById('wiz-max-players').value = String(inst.max_players || 10);
+      populateWizardOptions(inst.options || DEFAULT_WIZ_OPTIONS);
+      switchWizardTab('world');
+      document.getElementById('create-modal').classList.remove('hidden');
+      document.getElementById('create-modal').classList.add('flex');
     }
 
     function closeCreateModal() {
@@ -1284,25 +2145,29 @@
 
     async function submitCreateInstance(e) {
       e.preventDefault();
+      const editId = document.getElementById('wiz-edit-instance-id').value.trim();
+      const opts = collectWizardOptions();
       const payload = {
         display_name: document.getElementById('wiz-display-name').value.trim(),
         world_name: document.getElementById('wiz-world-name').value.trim(),
         seed: document.getElementById('wiz-seed').value.trim(),
         gamemode: document.getElementById('wiz-gamemode').value,
-        difficulty: document.getElementById('wiz-difficulty').value,
-        max_players: parseInt(document.getElementById('wiz-max-players').value, 10) || 10
+        difficulty: opts.hardcore ? 'hard' : document.getElementById('wiz-difficulty').value,
+        max_players: parseInt(document.getElementById('wiz-max-players').value, 10) || 10,
+        options: opts
       };
 
       try {
-        const res = await fetch('/api/instances', {
-          method: 'POST',
+        const url = editId ? `/api/instances/${editId}` : '/api/instances';
+        const method = editId ? 'PUT' : 'POST';
+        const res = await fetch(url, {
+          method,
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
         const data = await res.json();
-        if (!res.ok) throw new Error(data.detail || 'Failed to create instance');
+        if (!res.ok) throw new Error(data.detail || 'Failed to save server configuration');
         closeCreateModal();
-        document.getElementById('wiz-display-name').value = '';
         state.selectedInstanceId = data.instance.id;
         const stateRes = await fetch('/api/state');
         const full = await stateRes.json();
@@ -1311,7 +2176,9 @@
         renderAll();
         selectConsoleInstance(data.instance.id);
         showToast(
-          `Created <strong>${escapeHtml(data.instance.display_name)}</strong> on UDP :${data.instance.port}`,
+          editId
+            ? `Saved world &amp; server rules for <strong>${escapeHtml(data.instance.display_name)}</strong>`
+            : `Created <strong>${escapeHtml(data.instance.display_name)}</strong> on UDP :${data.instance.port}`,
           'success'
         );
       } catch (err) {
