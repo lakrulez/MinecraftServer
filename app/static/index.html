@@ -89,7 +89,7 @@
 
       <!-- Host Telemetry & Primary CTA -->
       <div class="flex items-center gap-4">
-        <div class="hidden md:flex items-center gap-4 px-3.5 py-1.5 rounded-lg bg-slate-900/90 border border-slate-800 text-xs">
+        <div class="hidden md:flex items-center gap-3.5 px-3.5 py-1.5 rounded-lg bg-slate-900/90 border border-slate-800 text-xs">
           <div class="flex items-center gap-2">
             <span class="text-slate-400">Host CPU</span>
             <span id="host-cpu" class="font-mono font-semibold text-sky-400">0.0%</span>
@@ -98,6 +98,11 @@
           <div class="flex items-center gap-2">
             <span class="text-slate-400">Host RAM</span>
             <span id="host-ram" class="font-mono font-semibold text-indigo-400">0.0 / 0.0 GB</span>
+          </div>
+          <div class="h-3 w-px bg-slate-800"></div>
+          <div class="flex items-center gap-2" id="host-players-wrap" title="No players online">
+            <span class="text-slate-400">Players</span>
+            <span id="host-players" class="font-mono font-semibold text-emerald-400">0 online</span>
           </div>
           <div class="h-3 w-px bg-slate-800"></div>
           <div class="flex items-center gap-1.5">
@@ -1333,7 +1338,33 @@
     function renderHostMetrics() {
       if (!state.host) return;
       document.getElementById('host-cpu').textContent = `${(state.host.cpu_percent ?? 0).toFixed(1)}%`;
-      document.getElementById('host-ram').textContent = `${state.host.ram_used_gb ?? 0} / ${state.host.ram_total_gb ?? 0} GB`;
+      const ramPct = state.host.ram_percent != null ? ` (${state.host.ram_percent.toFixed(0)}%)` : '';
+      document.getElementById('host-ram').textContent = `${state.host.ram_used_gb ?? 0} / ${state.host.ram_total_gb ?? 0} GB${ramPct}`;
+
+      const allPlayers = [];
+      let totalCount = 0;
+      for (const inst of (state.instances || [])) {
+        if (inst.status === 'online') {
+          totalCount += (inst.players_online || 0);
+          for (const p of (inst.players_list || [])) {
+            allPlayers.push(`${p} (${inst.display_name})`);
+          }
+        }
+      }
+      const pEl = document.getElementById('host-players');
+      const pWrap = document.getElementById('host-players-wrap');
+      if (pEl) {
+        if (allPlayers.length > 0) {
+          pEl.textContent = `${totalCount} online: ${(state.broadcaster?.online_players || allPlayers).slice(0, 3).join(', ')}`;
+          pEl.className = 'font-mono font-semibold text-emerald-400';
+        } else {
+          pEl.textContent = `${totalCount} online`;
+          pEl.className = totalCount > 0 ? 'font-mono font-semibold text-emerald-400' : 'font-mono font-semibold text-slate-400';
+        }
+      }
+      if (pWrap) {
+        pWrap.title = allPlayers.length > 0 ? `Joined Players: ${allPlayers.join(', ')}` : 'No players currently joined';
+      }
     }
 
     function renderBroadcaster() {
@@ -1345,14 +1376,14 @@
       if (b.beacon_active) {
         badge.className = 'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30';
         dot.className = 'w-2 h-2 rounded-full bg-emerald-400 animate-ping';
-        text.textContent = `BEACON ACTIVE ON SUBNET (${b.lan_ip || '0.0.0.0'}:${b.bind_port || 19132})`;
+        text.textContent = `BEACON ACTIVE ON SUBNET (${b.lan_ip || '0.0.0.0'}:${b.bind_port || 19132} & :${b.nethernet_bind_port || 7551})`;
       } else {
         badge.className = 'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/30';
         dot.className = 'w-2 h-2 rounded-full bg-amber-400';
         text.textContent = b.enabled ? 'STANDBY (NO TARGET)' : 'BROADCASTER DISABLED';
       }
 
-      document.getElementById('lan-endpoint-pill').textContent = `LAN UDP ${b.lan_ip || '0.0.0.0'}:${b.bind_port || 19132}`;
+      document.getElementById('lan-endpoint-pill').textContent = `LAN UDP ${b.lan_ip || '0.0.0.0'}:19132 + :7551`;
 
       // Toggle UI
       const btn = document.getElementById('broadcaster-toggle-btn');
@@ -1387,11 +1418,24 @@
       select.value = currentVal;
 
       // Telemetry cells
-      document.getElementById('proxy-route-display').textContent = b.target_port
-        ? `0.0.0.0:${b.bind_port} ➔ 127.0.0.1:${b.target_port}`
+      const nnCount = b.online_broadcast_count ?? 0;
+      const routeText = b.target_port
+        ? `:7551 (${nnCount} srv) • :${b.bind_port} ➔ :${b.target_port}`
         : 'Unmapped';
+      document.getElementById('proxy-route-display').textContent = routeText;
+      document.getElementById('proxy-route-display').title = b.target_nethernet_port
+        ? `NetherNet :7551 ➔ :${b.target_nethernet_port} | RakNet :${b.bind_port} ➔ :${b.target_port}`
+        : routeText;
       document.getElementById('proxy-pings-display').textContent = `${b.pings_received ?? 0} / ${b.pongs_sent ?? 0}`;
-      document.getElementById('proxy-sessions-display').textContent = `${b.active_sessions ?? 0} active`;
+
+      const totPlayers = b.total_players_online ?? 0;
+      const pNames = (b.online_players || []).join(', ');
+      const sessEl = document.getElementById('proxy-sessions-display');
+      sessEl.textContent = totPlayers > 0
+        ? `${totPlayers} player${totPlayers === 1 ? '' : 's'} (${pNames || 'online'})`
+        : `${b.active_sessions ?? 0} active`;
+      sessEl.title = pNames ? `Online Players: ${pNames}` : '';
+
       document.getElementById('proxy-packets-display').textContent = `${b.packets_to_server ?? 0} / ${b.packets_to_client ?? 0}`;
       const motdEl = document.getElementById('proxy-motd-display');
       motdEl.textContent = b.motd_preview || '—';
@@ -1502,9 +1546,9 @@
               <!-- Badges Row -->
               <div class="flex flex-wrap items-center gap-1.5 mb-3 text-[11px] font-mono">
                 <span class="px-2 py-0.5 rounded bg-slate-950 text-sky-400 border border-slate-800">UDP :${inst.port}</span>
+                ${inst.nethernet_udp_port ? `<span class="px-2 py-0.5 rounded bg-slate-950 text-teal-400 border border-slate-800" title="Live NetherNet UDP Port">NetherNet :${inst.nethernet_udp_port}</span>` : ''}
                 <span class="px-2 py-0.5 rounded bg-slate-950 text-slate-300 border border-slate-800 capitalize">${escapeHtml(inst.gamemode)}</span>
                 <span class="px-2 py-0.5 rounded bg-slate-950 text-slate-300 border border-slate-800 capitalize">${escapeHtml(inst.difficulty)}</span>
-                <span class="px-2 py-0.5 rounded bg-slate-950 text-slate-300 border border-slate-800">${inst.players_online}/${inst.max_players} Players</span>
                 ${inst.options?.hardcore ? `<span class="px-2 py-0.5 rounded bg-rose-950/80 text-rose-300 border border-rose-500/40 font-semibold">💀 HARDCORE</span>` : ''}
                 ${inst.options?.world_type === 'FLAT' ? `<span class="px-2 py-0.5 rounded bg-purple-950/70 text-purple-300 border border-purple-500/40">🌍 FLAT</span>` : ''}
                 ${(inst.options?.starter_kit && inst.options.starter_kit !== 'none') ? `<span class="px-2 py-0.5 rounded bg-emerald-950/80 text-emerald-300 border border-emerald-500/40">🎁 KIT: ${escapeHtml(inst.options.starter_kit.toUpperCase())}</span>` : ''}
@@ -1519,21 +1563,66 @@
                 ${inst.options?.education_features ? `<span class="px-2 py-0.5 rounded bg-fuchsia-950/70 text-fuchsia-300 border border-fuchsia-500/40">🧪 EDU</span>` : ''}
               </div>
 
-              <!-- Live Telemetry Metrics Grid -->
-              <div class="grid grid-cols-3 gap-2 p-2.5 rounded-xl bg-slate-950/80 border border-slate-800/80 text-xs mb-4">
+              <!-- Live Telemetry Metrics Grid (4 Columns) -->
+              <div class="grid grid-cols-4 gap-2 p-2.5 rounded-xl bg-slate-950/80 border border-slate-800/80 text-xs mb-3">
                 <div>
                   <div class="text-[10px] uppercase text-slate-400">Uptime</div>
                   <div class="font-mono font-semibold ${isOnline ? 'text-emerald-400' : 'text-slate-500'} mt-0.5">${escapeHtml(inst.uptime_human)}</div>
                 </div>
                 <div>
                   <div class="text-[10px] uppercase text-slate-400">CPU %</div>
-                  <div class="font-mono font-semibold text-sky-400 mt-0.5">${isOnline ? inst.cpu_percent.toFixed(1) + '%' : '0.0%'}</div>
+                  <div class="font-mono font-semibold text-sky-400 mt-0.5">${isOnline ? (inst.cpu_percent ?? 0).toFixed(1) + '%' : '0.0%'}</div>
                 </div>
                 <div>
                   <div class="text-[10px] uppercase text-slate-400">Memory</div>
-                  <div class="font-mono font-semibold text-indigo-400 mt-0.5">${isOnline ? inst.memory_mb.toFixed(1) + ' MB' : '0.0 MB'}</div>
+                  <div class="font-mono font-semibold text-indigo-400 mt-0.5">${isOnline ? (inst.memory_mb ?? 0).toFixed(1) + ' MB' : '0.0 MB'}</div>
+                </div>
+                <div>
+                  <div class="text-[10px] uppercase text-slate-400">Players</div>
+                  <div class="font-mono font-semibold ${(inst.players_online || 0) > 0 ? 'text-emerald-400' : 'text-slate-300'} mt-0.5">${inst.players_online || 0} / ${inst.max_players}</div>
                 </div>
               </div>
+
+              <!-- Joined Players Roster -->
+              ${isOnline ? `
+                <div class="mb-3 p-2.5 rounded-xl bg-slate-950/70 border ${(inst.players_list && inst.players_list.length > 0) ? 'border-emerald-500/30' : 'border-slate-800/80'}">
+                  <div class="flex items-center justify-between mb-1.5">
+                    <span class="text-[10px] font-mono uppercase tracking-wider ${(inst.players_list && inst.players_list.length > 0) ? 'text-emerald-400 font-semibold' : 'text-slate-400'}">
+                      👥 Joined Players (${inst.players_online || 0}/${inst.max_players})
+                    </span>
+                    <button
+                      onclick="sendPlayerQuickCommand('${inst.id}', 'list', 'Synced online player list')"
+                      class="text-[10px] font-mono text-slate-400 hover:text-emerald-300 transition cursor-pointer"
+                      title="Query live player list from BDS STDIN"
+                    >
+                      ↻ Sync
+                    </button>
+                  </div>
+                  ${(inst.player_details && inst.player_details.length > 0) ? `
+                    <div class="flex flex-wrap gap-1.5">
+                      ${inst.player_details.map(p => `
+                        <div class="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-emerald-950/40 border border-emerald-500/30 text-xs font-mono">
+                          <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                          <span class="text-emerald-200 font-semibold">${escapeHtml(p.name)}</span>
+                          ${p.joined_at ? `<span class="text-[10px] text-slate-400">(${escapeHtml(p.joined_at)})</span>` : ''}
+                          <button
+                            onclick='sendPlayerQuickCommand(${JSON.stringify(inst.id)}, "op " + JSON.stringify(${JSON.stringify(p.name)}), "Granted OP to " + ${JSON.stringify(p.name)})'
+                            class="ml-0.5 px-1 py-0.5 rounded bg-slate-800 hover:bg-purple-900/70 text-[9px] text-purple-300 border border-slate-700 cursor-pointer"
+                            title="Grant Operator (OP) to ${escapeHtml(p.name)}"
+                          >OP</button>
+                          <button
+                            onclick='sendPlayerQuickCommand(${JSON.stringify(inst.id)}, "kick " + JSON.stringify(${JSON.stringify(p.name)}), "Kicked " + ${JSON.stringify(p.name)})'
+                            class="px-1 py-0.5 rounded bg-slate-800 hover:bg-rose-900/70 text-[9px] text-rose-300 border border-slate-700 cursor-pointer"
+                            title="Kick ${escapeHtml(p.name)}"
+                          >Kick</button>
+                        </div>
+                      `).join('')}
+                    </div>
+                  ` : `
+                    <div class="text-[11px] font-mono text-slate-500">No players currently joined in world</div>
+                  `}
+                </div>
+              ` : ''}
             </div>
 
             <!-- Action Controls -->
@@ -2270,6 +2359,23 @@
       if (actionType === 'chest') preset = document.getElementById('opt-starter_chest_loadout').value;
       if (actionType === 'house') preset = document.getElementById('opt-starter_house').value;
       await triggerStarterAction(editId, actionType, preset === 'none' ? '' : preset);
+    }
+
+    async function sendPlayerQuickCommand(instanceId, cmdStr, toastLabel = '') {
+      try {
+        const res = await fetch(`/api/instances/${instanceId}/command`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ command: cmdStr })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Command failed');
+        if (toastLabel) {
+          showToast(escapeHtml(toastLabel), 'success');
+        }
+      } catch (err) {
+        showToast(escapeHtml(err.message), 'error');
+      }
     }
 
     async function submitCreateInstance(e) {

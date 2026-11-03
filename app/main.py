@@ -129,9 +129,10 @@ broadcaster = RakNetLANBroadcaster(
 healer = SelfHealingCoordinator(manager=manager, broadcaster=broadcaster)
 
 
-def _sync_broadcaster_target_metadata() -> None:
+def _sync_broadcaster_target_metadata(instances: list[dict[str, Any]] | None = None) -> list[dict[str, Any]]:
     """Keep the broadcaster's online instances and primary target in sync with the manager."""
-    instances = manager.list_instances()
+    if instances is None:
+        instances = manager.list_instances()
     broadcaster.sync_online_instances(instances)
 
     saved_id = (
@@ -150,7 +151,7 @@ def _sync_broadcaster_target_metadata() -> None:
                 manager.set_setting("broadcaster_instance_id", online_instances[0]["id"])
             else:
                 broadcaster.set_target_instance(inst)
-            return
+            return instances
 
     if online_instances:
         broadcaster.set_target_instance(online_instances[0])
@@ -160,26 +161,50 @@ def _sync_broadcaster_target_metadata() -> None:
         manager.set_setting("broadcaster_instance_id", instances[0]["id"])
     else:
         broadcaster.set_target_instance(None)
+    return instances
+
+
+# Prime psutil host CPU counter on module load
+try:
+    psutil.cpu_percent(interval=None)
+except Exception:
+    pass
+
+_LAST_HOST_SAMPLE_AT: float = 0.0
+_CACHED_HOST_METRICS: dict[str, Any] = {
+    "cpu_percent": 0.0,
+    "ram_percent": 0.0,
+    "ram_used_gb": 0.0,
+    "ram_total_gb": 0.0,
+}
 
 
 def _get_host_metrics() -> dict[str, Any]:
-    vm = psutil.virtual_memory()
-    return {
-        "cpu_percent": round(psutil.cpu_percent(interval=None), 1),
-        "ram_percent": round(vm.percent, 1),
-        "ram_used_gb": round(vm.used / (1024**3), 2),
-        "ram_total_gb": round(vm.total / (1024**3), 2),
-    }
+    global _LAST_HOST_SAMPLE_AT, _CACHED_HOST_METRICS
+    now = time.perf_counter()
+    if now - _LAST_HOST_SAMPLE_AT >= 0.85 or _LAST_HOST_SAMPLE_AT == 0.0:
+        _LAST_HOST_SAMPLE_AT = now
+        vm = psutil.virtual_memory()
+        raw_cpu = float(psutil.cpu_percent(interval=None))
+        prev_cpu = float(_CACHED_HOST_METRICS.get("cpu_percent", 0.0))
+        smoothed_cpu = (0.7 * raw_cpu + 0.3 * prev_cpu) if prev_cpu > 0.0 else raw_cpu
+        _CACHED_HOST_METRICS = {
+            "cpu_percent": round(smoothed_cpu, 1),
+            "ram_percent": round(vm.percent, 1),
+            "ram_used_gb": round(vm.used / (1024**3), 2),
+            "ram_total_gb": round(vm.total / (1024**3), 2),
+        }
+    return dict(_CACHED_HOST_METRICS)
 
 
 async def _broadcast_telemetry_snapshot() -> None:
-    _sync_broadcaster_target_metadata()
+    instances = _sync_broadcaster_target_metadata()
     if not ws_hub.clients:
         return
     await ws_hub.broadcast_json(
         {
             "type": "telemetry",
-            "instances": manager.list_instances(),
+            "instances": instances,
             "broadcaster": broadcaster.get_status(),
             "diagnostics": healer.last_report,
             "host": _get_host_metrics(),
@@ -188,9 +213,13 @@ async def _broadcast_telemetry_snapshot() -> None:
 
 
 async def _telemetry_loop() -> None:
+    tick = 0
     while True:
         await asyncio.sleep(1.5)
+        tick += 1
         try:
+            if tick % 4 == 0:
+                await manager.poll_online_players()
             await _broadcast_telemetry_snapshot()
         except Exception as exc:
             logger.debug("Telemetry broadcast error: %s", exc)
@@ -261,9 +290,9 @@ async def serve_dashboard() -> HTMLResponse:
 
 @app.get("/api/state")
 async def get_full_state() -> dict[str, Any]:
-    _sync_broadcaster_target_metadata()
+    instances = _sync_broadcaster_target_metadata()
     return {
-        "instances": manager.list_instances(),
+        "instances": instances,
         "broadcaster": broadcaster.get_status(),
         "diagnostics": healer.last_report,
         "backups": manager.list_backups(),
@@ -612,8 +641,7 @@ async def api_delete_backup(filename: str) -> dict[str, Any]:
 async def websocket_endpoint(ws: WebSocket) -> None:
     await ws_hub.connect(ws)
     try:
-        _sync_broadcaster_target_metadata()
-        instances = manager.list_instances()
+        instances = _sync_broadcaster_target_metadata()
         logs_by_instance = {inst["id"]: manager.get_console_logs(inst["id"]) for inst in instances}
         await ws.send_json(
             {

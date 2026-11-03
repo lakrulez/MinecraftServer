@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 from collections import deque
+import ctypes
 import datetime
 import io
 import json
@@ -99,8 +100,46 @@ def is_udp_port_free(port: int) -> bool:
         return False
 
 
+_KERNEL32 = ctypes.WinDLL("kernel32", use_last_error=True) if os.name == "nt" else None
+_PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+try:
+    _FREQ_INFO = psutil.cpu_freq()
+    _HOST_CPU_FREQ_HZ = float((_FREQ_INFO.max or _FREQ_INFO.current or 2800.0) if _FREQ_INFO else 2800.0) * 1_000_000.0
+except Exception:
+    _HOST_CPU_FREQ_HZ = 2_800_000_000.0
+
+
+def get_process_cpu_cycles(pid: int) -> int:
+    """
+    Query hardware CPU clock cycles consumed by `pid` on Windows via `QueryProcessCycleTime`.
+    Unlike `GetProcessTimes` (which only samples on 15.6ms clock interrupts and misses BDS's
+    short 20 TPS tick wakeups), `QueryProcessCycleTime` captures exact RDTSC thread cycles.
+    """
+    if _KERNEL32 is None or pid <= 0:
+        return 0
+    handle = _KERNEL32.OpenProcess(_PROCESS_QUERY_LIMITED_INFORMATION, False, int(pid))
+    if not handle:
+        return 0
+    try:
+        cycles = ctypes.c_ulonglong(0)
+        if _KERNEL32.QueryProcessCycleTime(handle, ctypes.byref(cycles)):
+            return int(cycles.value)
+        return 0
+    except Exception:
+        return 0
+    finally:
+        _KERNEL32.CloseHandle(handle)
+
+
+_RE_PLAYER_CONNECTED = re.compile(r"Player connected:\s*(.+?),\s*xuid:\s*([0-9a-fA-F-]+)")
+_RE_PLAYER_SPAWNED = re.compile(r"Player Spawned:\s*(.+?)\s+xuid:\s*([0-9a-fA-F-]+)")
+_RE_PLAYER_DISCONNECTED = re.compile(r"Player disconnected:\s*(.+?),\s*xuid:\s*([0-9a-fA-F-]+)")
+_RE_PLAYERS_LIST_HDR = re.compile(r"There are\s+(\d+)\s*/\s*(\d+)\s+players online:")
+_RE_LOG_PREFIX = re.compile(r"^\[[^\]]+\]\s*")
+
+
 class ManagedInstanceRuntime:
-    """Tracks live subprocess, console ring buffer, and telemetry for one BDS instance."""
+    """Tracks live subprocess, console ring buffer, connected players, and telemetry for one BDS instance."""
 
     def __init__(self, instance_id: str) -> None:
         self.instance_id = instance_id
@@ -114,9 +153,36 @@ class ManagedInstanceRuntime:
         self.waiter_task: asyncio.Task[None] | None = None
         self.save_ready_event: asyncio.Event = asyncio.Event()
         self.players_online: int = 0
+        self.players: dict[str, dict[str, Any]] = {}
+        self.xuid_to_name: dict[str, str] = {}
         self.cpu_percent: float = 0.0
         self.memory_mb: float = 0.0
+        self.memory_percent: float = 0.0
+        self.nethernet_udp_port: int | None = None
+        self._last_metrics_at: float = 0.0
+        self._last_sample_wall: float = 0.0
+        self._last_cycles: int = 0
+        self._last_cpu_time: float = 0.0
+        self._silent_list_until: float = 0.0
+        self._expecting_list_names: bool = False
+        self._eat_empty_after_list: bool = False
         self.lock = asyncio.Lock()
+
+    def reset_runtime_metrics(self) -> None:
+        self.players_online = 0
+        self.players.clear()
+        self.xuid_to_name.clear()
+        self.cpu_percent = 0.0
+        self.memory_mb = 0.0
+        self.memory_percent = 0.0
+        self.nethernet_udp_port = None
+        self._last_metrics_at = 0.0
+        self._last_sample_wall = 0.0
+        self._last_cycles = 0
+        self._last_cpu_time = 0.0
+        self._silent_list_until = 0.0
+        self._expecting_list_names = False
+        self._eat_empty_after_list = False
 
 
 class InstanceManager:
@@ -448,6 +514,72 @@ class InstanceManager:
             self.runtimes[instance_id] = ManagedInstanceRuntime(instance_id)
         return self.runtimes[instance_id]
 
+    async def _notify_state(self) -> None:
+        if self.state_change_callback:
+            try:
+                await self.state_change_callback()
+            except Exception as exc:
+                logger.debug("State change callback error: %s", exc)
+
+    def _sample_runtime_telemetry(self, rt: ManagedInstanceRuntime, pid: int) -> None:
+        """
+        Sample per-process CPU % (combining hardware cycle counters via `QueryProcessCycleTime`
+        and kernel `cpu_times`), memory RSS (MB), and bound NetherNet UDP port at most once
+        every 0.85 seconds so back-to-back API/WebSocket calls never reset CPU deltas to 0.0%.
+        """
+        now_wall = time.perf_counter()
+        if now_wall - rt._last_metrics_at < 0.85 and rt._last_metrics_at > 0.0:
+            return
+
+        dt = max(0.05, now_wall - rt._last_sample_wall) if rt._last_sample_wall > 0.0 else 0.0
+        rt._last_metrics_at = now_wall
+
+        if rt.ps_proc is not None:
+            try:
+                if rt.ps_proc.is_running():
+                    cycles_now = get_process_cpu_cycles(pid)
+                    ct = rt.ps_proc.cpu_times()
+                    cpu_time_now = float(ct.user + ct.system)
+
+                    if dt > 0.0:
+                        d_cycles = max(0, cycles_now - rt._last_cycles) if rt._last_cycles > 0 else 0
+                        cycle_pct = (d_cycles / (_HOST_CPU_FREQ_HZ * dt)) * 100.0
+
+                        d_cpu = max(0.0, cpu_time_now - rt._last_cpu_time) if rt._last_cpu_time > 0.0 else 0.0
+                        ps_pct = (d_cpu / dt) * 100.0
+
+                        raw_pct = max(cycle_pct, ps_pct)
+                        smoothed = (0.65 * raw_pct + 0.35 * rt.cpu_percent) if rt.cpu_percent > 0.0 else raw_pct
+                        rt.cpu_percent = round(min(100.0, max(0.1 if raw_pct > 0.02 else 0.0, smoothed)), 1)
+
+                    rt._last_cycles = cycles_now
+                    rt._last_cpu_time = cpu_time_now
+                    rt._last_sample_wall = now_wall
+
+                    mem_info = rt.ps_proc.memory_info()
+                    rt.memory_mb = round(mem_info.rss / (1024 * 1024), 1)
+                    try:
+                        rt.memory_percent = round(rt.ps_proc.memory_percent(), 1)
+                    except Exception:
+                        pass
+
+                    found_nn_port: int | None = None
+                    for conn in rt.ps_proc.net_connections(kind="udp"):
+                        if conn.laddr and conn.laddr.port:
+                            p = int(conn.laddr.port)
+                            if str(conn.laddr.ip) in ("::", "0.0.0.0", ""):
+                                found_nn_port = p
+                                break
+                            if found_nn_port is None:
+                                found_nn_port = p
+                    if found_nn_port is not None:
+                        rt.nethernet_udp_port = found_nn_port
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                pass
+
+        if rt.nethernet_udp_port is None and pid > 0:
+            rt.nethernet_udp_port = discover_pid_nethernet_port(int(pid))
+
     def _enrich_instance(self, row: sqlite3.Row | dict[str, Any]) -> dict[str, Any]:
         data = dict(row)
         inst_id = data["id"]
@@ -456,6 +588,7 @@ class InstanceManager:
         uptime_sec = 0.0
         cpu_pct = 0.0
         mem_mb = 0.0
+        mem_pct = 0.0
         pid = None
         nethernet_udp_port: int | None = None
 
@@ -463,32 +596,16 @@ class InstanceManager:
             pid = rt.process.pid
             if rt.started_at:
                 uptime_sec = max(0.0, time.time() - rt.started_at)
-            if rt.ps_proc is not None:
-                try:
-                    if rt.ps_proc.is_running():
-                        raw_cpu = rt.ps_proc.cpu_percent(interval=None)
-                        cpu_Count = psutil.cpu_count() or 1
-                        cpu_pct = round(min(100.0, raw_cpu / cpu_Count if raw_cpu > 100 else raw_cpu), 1)
-                        mem_mb = round(rt.ps_proc.memory_info().rss / (1024 * 1024), 1)
-                        rt.cpu_percent = cpu_pct
-                        rt.memory_mb = mem_mb
-                        for conn in rt.ps_proc.net_connections(kind="udp"):
-                            if conn.laddr and conn.laddr.port:
-                                p = int(conn.laddr.port)
-                                if str(conn.laddr.ip) in ("::", "0.0.0.0", ""):
-                                    nethernet_udp_port = p
-                                    break
-                                if nethernet_udp_port is None:
-                                    nethernet_udp_port = p
-                except (psutil.NoSuchProcess, psutil.AccessDenied):
-                    pass
-            if nethernet_udp_port is None and pid is not None:
-                nethernet_udp_port = discover_pid_nethernet_port(int(pid))
+            self._sample_runtime_telemetry(rt, int(pid))
+            cpu_pct = rt.cpu_percent
+            mem_mb = rt.memory_mb
+            mem_pct = rt.memory_percent
+            nethernet_udp_port = rt.nethernet_udp_port
         else:
             if rt.status != "offline":
                 rt.status = "offline"
                 rt.started_at = None
-                rt.players_online = 0
+                rt.reset_runtime_metrics()
 
         raw_opts_json = data.get("options_json") or "{}"
         try:
@@ -502,15 +619,23 @@ class InstanceManager:
         else:
             opts = normalize_world_options(parsed_opts)
 
+        is_active = rt.status in ("online", "starting")
+        players_list = list(rt.players.keys()) if is_active else []
+        player_details = list(rt.players.values()) if is_active else []
+        players_online = max(rt.players_online, len(players_list)) if is_active else 0
+
         data.update(
             {
                 "status": rt.status,
                 "pid": pid,
                 "uptime_seconds": round(uptime_sec, 1),
-                "uptime_human": format_uptime(uptime_sec) if rt.status == "online" else "Offline",
+                "uptime_human": format_uptime(uptime_sec) if is_active else "Offline",
                 "cpu_percent": cpu_pct,
                 "memory_mb": mem_mb,
-                "players_online": rt.players_online if rt.status == "online" else 0,
+                "memory_percent": mem_pct,
+                "players_online": players_online,
+                "players_list": players_list,
+                "player_details": player_details,
                 "engine_mode": rt.engine_mode,
                 "nethernet_udp_port": nethernet_udp_port,
                 "properties_path": str(self.instance_dir(inst_id) / "server.properties"),
@@ -550,11 +675,91 @@ class InstanceManager:
             pass
         return entry
 
+    async def poll_online_players(self) -> None:
+        """
+        Silently send `list` to all running BDS instances so `players_online` and `players_list`
+        are continuously verified against the server's authoritative player table.
+        """
+        now = time.time()
+        for inst_id, rt in list(self.runtimes.items()):
+            if (
+                rt.status == "online"
+                and rt.process is not None
+                and rt.process.returncode is None
+                and rt.process.stdin is not None
+                and rt.started_at is not None
+                and (now - rt.started_at) > 4.0
+            ):
+                try:
+                    rt._silent_list_until = time.time() + 1.8
+                    rt.process.stdin.write(b"list\n")
+                    await rt.process.stdin.drain()
+                except Exception:
+                    pass
+
     async def _append_log(self, instance_id: str, line: str) -> None:
         rt = self.get_runtime(instance_id)
         text = line.rstrip("\r\n")
+        now_ts = datetime.datetime.now().strftime("%H:%M:%S")
+        is_silent_list = time.time() < rt._silent_list_until
+
+        # 1. Handle the line immediately following `There are X/Y players online:` when X > 0
+        if rt._expecting_list_names:
+            rt._expecting_list_names = False
+            stripped = _RE_LOG_PREFIX.sub("", text).strip()
+            # Ensure this line is the comma-separated player roster and not an unrelated log line
+            if stripped and not any(
+                tag in stripped
+                for tag in ("[INFO]", "[WARN]", "[ERROR]", "Server ", "Player ", "Saving ", "Data saved")
+            ):
+                names = [n.strip() for n in stripped.split(",") if n.strip()]
+                new_players: dict[str, dict[str, Any]] = {}
+                for n in names:
+                    existing = rt.players.get(n)
+                    if existing:
+                        new_players[n] = existing
+                    else:
+                        new_players[n] = {
+                            "name": n,
+                            "xuid": "",
+                            "joined_at": now_ts,
+                            "status": "online",
+                        }
+                rt.players = new_players
+                rt.players_online = len(rt.players)
+                await self._notify_state()
+                if is_silent_list:
+                    return
+
+        # 2. Handle empty trailing line after `There are 0/Y players online:` during silent poll
+        if rt._eat_empty_after_list:
+            rt._eat_empty_after_list = False
+            if not text.strip() and is_silent_list:
+                return
+
+        # 3. Handle `There are X/Y players online:` output from `list`
+        m_list = _RE_PLAYERS_LIST_HDR.search(text)
+        if m_list:
+            online_cnt = int(m_list.group(1))
+            prev_cnt = rt.players_online
+            if online_cnt == 0:
+                rt.players.clear()
+                rt.xuid_to_name.clear()
+                rt.players_online = 0
+                rt._expecting_list_names = False
+                rt._eat_empty_after_list = is_silent_list
+                if prev_cnt != 0:
+                    await self._notify_state()
+            else:
+                rt.players_online = online_cnt
+                rt._expecting_list_names = True
+                if prev_cnt != online_cnt:
+                    await self._notify_state()
+            if is_silent_list:
+                return
+
         entry = {
-            "timestamp": datetime.datetime.now().strftime("%H:%M:%S"),
+            "timestamp": now_ts,
             "line": text,
         }
         rt.logs.append(entry)
@@ -568,14 +773,55 @@ class InstanceManager:
         ):
             rt.save_ready_event.set()
 
-        # Track player count changes and auto-provision starter kits / cabin / chests on join
-        if "Player connected:" in text or "Player session established" in text:
-            rt.players_online += 1
+        # Track player connect / spawn / disconnect with exact player names and XUIDs
+        player_state_changed = False
+        m_conn = _RE_PLAYER_CONNECTED.search(text)
+        if m_conn:
+            p_name = m_conn.group(1).strip()
+            p_xuid = m_conn.group(2).strip()
+            existing = rt.players.get(p_name)
+            rt.players[p_name] = {
+                "name": p_name,
+                "xuid": p_xuid,
+                "joined_at": existing["joined_at"] if existing else now_ts,
+                "status": "online",
+            }
+            if p_xuid:
+                rt.xuid_to_name[p_xuid] = p_name
+            rt.players_online = len(rt.players)
+            player_state_changed = True
             asyncio.create_task(self._on_player_join_provision(instance_id))
-        elif "Player Spawned:" in text:
-            asyncio.create_task(self._on_player_join_provision(instance_id, immediate=True))
-        elif "Player disconnected:" in text and rt.players_online > 0:
-            rt.players_online -= 1
+        else:
+            m_spawn = _RE_PLAYER_SPAWNED.search(text)
+            if m_spawn:
+                p_name = m_spawn.group(1).strip()
+                p_xuid = m_spawn.group(2).strip()
+                existing = rt.players.get(p_name)
+                rt.players[p_name] = {
+                    "name": p_name,
+                    "xuid": p_xuid or (existing["xuid"] if existing else ""),
+                    "joined_at": existing["joined_at"] if existing else now_ts,
+                    "status": "online",
+                }
+                if p_xuid:
+                    rt.xuid_to_name[p_xuid] = p_name
+                rt.players_online = len(rt.players)
+                player_state_changed = True
+                asyncio.create_task(self._on_player_join_provision(instance_id, immediate=True))
+            else:
+                m_disc = _RE_PLAYER_DISCONNECTED.search(text)
+                if m_disc:
+                    p_name = m_disc.group(1).strip()
+                    p_xuid = m_disc.group(2).strip()
+                    rt.players.pop(p_name, None)
+                    if p_xuid and p_xuid in rt.xuid_to_name:
+                        mapped_name = rt.xuid_to_name.pop(p_xuid)
+                        rt.players.pop(mapped_name, None)
+                    rt.players_online = len(rt.players)
+                    player_state_changed = True
+                elif "Player disconnected:" in text and rt.players_online > 0:
+                    rt.players_online = max(0, rt.players_online - 1)
+                    player_state_changed = True
 
         # Confirm starter house / supply chest placement once BDS reports blocks filled or placed
         if ("blocks filled" in text or "Block placed" in text) and getattr(
@@ -590,9 +836,17 @@ class InstanceManager:
                 pass
 
         if self.console_push_callback:
-            await self.console_push_callback(instance_id, entry)
+            try:
+                await self.console_push_callback(instance_id, entry)
+            except Exception:
+                pass
+
+        if player_state_changed:
+            await self._notify_state()
 
         if "Server started." in text or "Accepting clients on" in text:
+            if rt.status == "starting":
+                rt.status = "online"
             if "Server started." in text:
                 asyncio.create_task(self.apply_live_options(instance_id))
             await self._notify_state()
@@ -794,7 +1048,7 @@ class InstanceManager:
             cmd, engine_mode = self._resolve_bds_command(inst_dir)
             rt.engine_mode = engine_mode
             rt.status = "starting"
-            rt.players_online = 0
+            rt.reset_runtime_metrics()
 
             env = os.environ.copy()
             env["PYTHONUNBUFFERED"] = "1"
@@ -822,16 +1076,18 @@ class InstanceManager:
             rt.status = "online"
             try:
                 rt.ps_proc = psutil.Process(proc.pid)
-                rt.ps_proc.cpu_percent(interval=None)
+                rt._last_cycles = get_process_cpu_cycles(proc.pid)
+                ct = rt.ps_proc.cpu_times()
+                rt._last_cpu_time = float(ct.user + ct.system)
+                rt._last_sample_wall = time.perf_counter()
+                rt._last_metrics_at = 0.0
             except Exception:
                 rt.ps_proc = None
 
             rt.reader_task = asyncio.create_task(self._stdout_reader(instance_id, proc))
             rt.waiter_task = asyncio.create_task(self._process_waiter(instance_id, proc))
 
-        if self.state_change_callback:
-            await self.state_change_callback()
-
+        await self._notify_state()
         return self.get_instance(instance_id)  # type: ignore[return-value]
 
     async def _stdout_reader(self, instance_id: str, proc: asyncio.subprocess.Process) -> None:
@@ -843,7 +1099,10 @@ class InstanceManager:
                 if not raw:
                     break
                 line = raw.decode("utf-8", errors="replace")
-                await self._append_log(instance_id, line)
+                try:
+                    await self._append_log(instance_id, line)
+                except Exception as line_exc:
+                    logger.debug("Log handler error for %s: %s", instance_id, line_exc)
         except asyncio.CancelledError:
             pass
         except Exception as exc:
@@ -857,9 +1116,7 @@ class InstanceManager:
             if rt.process is proc:
                 rt.status = "offline"
                 rt.started_at = None
-                rt.players_online = 0
-                rt.cpu_percent = 0.0
-                rt.memory_mb = 0.0
+                rt.reset_runtime_metrics()
                 rt.ps_proc = None
             await self._append_log(
                 instance_id,
@@ -875,8 +1132,7 @@ class InstanceManager:
                 await asyncio.to_thread(ensure_vc_redist, True)
                 await asyncio.to_thread(sync_vc_dlls_to_directory, self.instance_dir(instance_id))
                 asyncio.create_task(self.start_instance(instance_id))
-            if self.state_change_callback:
-                await self.state_change_callback()
+            await self._notify_state()
         except asyncio.CancelledError:
             pass
 
@@ -903,6 +1159,7 @@ class InstanceManager:
             proc = rt.process
             if not proc or proc.returncode is not None:
                 rt.status = "offline"
+                rt.reset_runtime_metrics()
                 return self.get_instance(instance_id)  # type: ignore[return-value]
 
             rt.status = "stopping"
@@ -931,12 +1188,10 @@ class InstanceManager:
 
             rt.status = "offline"
             rt.started_at = None
-            rt.players_online = 0
+            rt.reset_runtime_metrics()
             rt.ps_proc = None
 
-        if self.state_change_callback:
-            await self.state_change_callback()
-
+        await self._notify_state()
         return self.get_instance(instance_id)  # type: ignore[return-value]
 
     async def restart_instance(self, instance_id: str) -> dict[str, Any]:
@@ -969,12 +1224,10 @@ class InstanceManager:
                     pass
             rt.status = "offline"
             rt.started_at = None
-            rt.players_online = 0
+            rt.reset_runtime_metrics()
             rt.ps_proc = None
 
-        if self.state_change_callback:
-            await self.state_change_callback()
-
+        await self._notify_state()
         return self.get_instance(instance_id)  # type: ignore[return-value]
 
     async def stop_all(self) -> None:

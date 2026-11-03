@@ -410,6 +410,8 @@ class RakNetLANBroadcaster:
         self.enabled: bool = True
         self.target: TargetInstanceConfig | None = None
         self.online_targets: dict[str, TargetInstanceConfig] = {}
+        self.total_players_online: int = 0
+        self.online_players: list[str] = []
         self.nethernet_id_to_port: dict[int, int] = {}
         self.transport: asyncio.DatagramTransport | None = None
         self.nethernet_transport: asyncio.DatagramTransport | None = None
@@ -575,6 +577,8 @@ class RakNetLANBroadcaster:
         """Keep the registry of all currently running BDS instances up-to-date for multi-server LAN discovery."""
         new_online: dict[str, TargetInstanceConfig] = {}
         active_nn_ports: set[int] = set()
+        total_players = 0
+        all_player_names: list[str] = []
 
         for inst in instances:
             if inst.get("status") != "online":
@@ -585,7 +589,13 @@ class RakNetLANBroadcaster:
             nn_port = int(raw_nn) if raw_nn else None
             if nn_port:
                 active_nn_ports.add(nn_port)
-            new_online[iid] = TargetInstanceConfig(
+            p_count = int(inst.get("players_online", 0))
+            total_players += p_count
+            for p_name in inst.get("players_list") or []:
+                if p_name and p_name not in all_player_names:
+                    all_player_names.append(str(p_name))
+
+            cfg = TargetInstanceConfig(
                 id=iid,
                 display_name=str(inst.get("display_name", "Bedrock Server")),
                 world_name=str(inst.get("world_name", "Bedrock level")),
@@ -594,10 +604,17 @@ class RakNetLANBroadcaster:
                 nethernet_udp_port=nn_port,
                 gamemode=str(inst.get("gamemode", "survival")),
                 max_players=int(inst.get("max_players", 10)),
-                player_count=int(inst.get("players_online", 0)),
+                player_count=p_count,
             )
+            new_online[iid] = cfg
+            if self.target and self.target.id == iid:
+                self.target.player_count = p_count
+                if nn_port:
+                    self.target.nethernet_udp_port = nn_port
 
         self.online_targets = new_online
+        self.total_players_online = total_players
+        self.online_players = all_player_names
 
         # Prune any NetherNet sessions or ID mappings pointing to ports that are no longer online
         for key in [k for k, sess in self.nethernet_sessions.items() if sess.target_port not in active_nn_ports]:
@@ -881,11 +898,18 @@ class RakNetLANBroadcaster:
         beacon_active = bool(
             self.enabled and self.bound_ok and (self.target is not None or bool(self.online_targets))
         )
-        endpoints = [f"{str(addr[0]).replace('::ffff:', '')}:{addr[1]}" for addr in self.sessions.keys()]
-        for addr, _ in self.nethernet_sessions.keys():
-            ep = f"{str(addr[0]).replace('::ffff:', '')}:{addr[1]}"
-            if ep not in endpoints:
+        endpoints: list[str] = []
+        for addr in self.sessions.keys():
+            ip_str = str(addr[0]).replace("::ffff:", "")
+            ep = f"{ip_str}:{addr[1]}"
+            if ip_str not in ("127.0.0.1", "::1") and ep not in endpoints:
                 endpoints.append(ep)
+        for addr, _ in self.nethernet_sessions.keys():
+            ip_str = str(addr[0]).replace("::ffff:", "")
+            ep = f"{ip_str}:{addr[1]}"
+            if ip_str not in ("127.0.0.1", "::1") and ep not in endpoints:
+                endpoints.append(ep)
+        active_sessions = max(len(endpoints), self.total_players_online)
         return {
             "enabled": self.enabled,
             "bound": self.bound_ok,
@@ -902,7 +926,9 @@ class RakNetLANBroadcaster:
             "target_nethernet_port": self.target.nethernet_udp_port if self.target else None,
             "online_broadcast_count": len(self._get_online_nethernet_ports()),
             "motd_preview": self.build_current_motd() if self.target else None,
-            "active_sessions": len(self.sessions) + len(self.nethernet_sessions),
+            "active_sessions": active_sessions,
+            "total_players_online": self.total_players_online,
+            "online_players": list(self.online_players),
             "client_endpoints": endpoints,
             "pings_received": self.pings_received,
             "pongs_sent": self.pongs_sent,
