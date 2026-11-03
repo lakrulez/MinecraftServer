@@ -48,6 +48,9 @@ from app.world_options import (
     apply_options_to_level_dat,
     build_live_gamerule_commands,
     build_server_properties,
+    build_starter_chest_commands,
+    build_starter_house_commands,
+    build_starter_kit_commands,
     normalize_world_options,
     read_options_from_level_dat,
 )
@@ -565,11 +568,26 @@ class InstanceManager:
         ):
             rt.save_ready_event.set()
 
-        # Track player count changes from BDS console logs
+        # Track player count changes and auto-provision starter kits / cabin / chests on join
         if "Player connected:" in text or "Player session established" in text:
             rt.players_online += 1
+            asyncio.create_task(self._on_player_join_provision(instance_id))
+        elif "Player Spawned:" in text:
+            asyncio.create_task(self._on_player_join_provision(instance_id, immediate=True))
         elif "Player disconnected:" in text and rt.players_online > 0:
             rt.players_online -= 1
+
+        # Confirm starter house / supply chest placement once BDS reports blocks filled or placed
+        if ("blocks filled" in text or "Block placed" in text) and getattr(
+            rt, "_pending_structure_flag_path", None
+        ):
+            try:
+                flag_p: Path = getattr(rt, "_pending_structure_flag_path")
+                flag_p.parent.mkdir(parents=True, exist_ok=True)
+                flag_p.write_text("1", encoding="utf-8")
+                setattr(rt, "_pending_structure_flag_path", None)
+            except Exception:
+                pass
 
         if self.console_push_callback:
             await self.console_push_callback(instance_id, entry)
@@ -578,6 +596,114 @@ class InstanceManager:
             if "Server started." in text:
                 asyncio.create_task(self.apply_live_options(instance_id))
             await self._notify_state()
+
+    async def _on_player_join_provision(self, instance_id: str, immediate: bool = False) -> None:
+        """
+        Automatically provision configured Starter Inventory Kits, Stocked Supply Chests,
+        and Co-Op Starter Houses when players spawn into the world.
+        """
+        delays = (0.8,) if immediate else (2.5, 6.5, 12.0)
+        for d in delays:
+            await asyncio.sleep(d)
+            inst = self.get_instance(instance_id)
+            if not inst:
+                return
+            rt = self.get_runtime(instance_id)
+            if not rt.process or rt.process.returncode is not None or not rt.process.stdin:
+                return
+
+            opts = normalize_world_options(inst.get("options"))
+            kit_tier = str(opts.get("starter_kit", "none"))
+            chest_mode = str(opts.get("starter_chest_loadout", "none"))
+            house_type = str(opts.get("starter_house", "none"))
+
+            cmds: list[str] = []
+
+            # 1. Auto-build Starter House and/or Stocked Supply Chests once per world at spawn
+            if house_type != "none" or chest_mode != "none":
+                w_dir = self.world_dir(instance_id, inst["world_name"])
+                flag_file = w_dir / "bn_structure_built.flag"
+                if not flag_file.exists():
+                    setattr(rt, "_pending_structure_flag_path", flag_file)
+                    if house_type != "none":
+                        cmds.extend(build_starter_house_commands(house_type, at_selector="@a[c=1]"))
+                    if chest_mode != "none":
+                        cmds.extend(build_starter_chest_commands(chest_mode, at_selector="@a[c=1]"))
+
+            # 2. Auto-give Starter Inventory Kit to any player without `bn_starter_given` tag
+            if kit_tier != "none":
+                cmds.extend(
+                    build_starter_kit_commands(
+                        kit_tier,
+                        selector="@a[tag=!bn_starter_given]",
+                        tag_after=True,
+                    )
+                )
+
+            if cmds:
+                if not opts.get("allow_cheats", True):
+                    cmds.append("changesetting allow-cheats false")
+                try:
+                    for c in cmds:
+                        rt.process.stdin.write((c + "\n").encode("utf-8"))
+                    await rt.process.stdin.drain()
+                except Exception:
+                    return
+
+    async def trigger_starter_action(
+        self,
+        instance_id: str,
+        action_type: str,
+        preset: str = "",
+    ) -> dict[str, Any]:
+        """
+        Immediately dispatch a Starter Kit, Stocked Supply Chest, or Co-Op House build
+        to all online players on a running server via STDIN.
+        """
+        inst = self.get_instance(instance_id)
+        if not inst:
+            raise ValueError(f"Instance '{instance_id}' not found")
+        rt = self.get_runtime(instance_id)
+        if not rt.process or rt.process.returncode is not None or not rt.process.stdin:
+            raise RuntimeError("Server instance must be ONLINE to spawn starter kits or structures.")
+
+        opts = normalize_world_options(inst.get("options"))
+        cmds: list[str] = []
+        label = ""
+
+        if action_type == "kit":
+            tier = preset or str(opts.get("starter_kit", "homestead_builder"))
+            if tier == "none":
+                tier = "homestead_builder"
+            cmds = build_starter_kit_commands(tier, selector="@a", tag_after=False)
+            label = f"Starter Kit ({tier})"
+        elif action_type == "chest":
+            mode = preset or str(opts.get("starter_chest_loadout", "house_builder_chest"))
+            if mode == "none":
+                mode = "house_builder_chest"
+            cmds = build_starter_chest_commands(mode, at_selector="@a[c=1]")
+            label = f"Supply Chest ({mode})"
+        elif action_type == "house":
+            kind = preset or str(opts.get("starter_house", "coop_cabin"))
+            if kind == "none":
+                kind = "coop_cabin"
+            cmds = build_starter_house_commands(kind, at_selector="@a[c=1]")
+            label = f"Starter Structure ({kind})"
+        else:
+            raise ValueError(f"Unknown starter action_type: {action_type}")
+
+        if not opts.get("allow_cheats", True):
+            cmds.append("changesetting allow-cheats false")
+
+        for c in cmds:
+            rt.process.stdin.write((c + "\n").encode("utf-8"))
+        await rt.process.stdin.drain()
+
+        await self._append_log(
+            instance_id,
+            f"\x1b[32m[HOMESTEAD]\x1b[0m Dispatched {label} ({len(cmds)} commands) to online players.",
+        )
+        return {"ok": True, "action_type": action_type, "preset": preset, "commands_sent": len(cmds)}
 
     async def apply_live_options(self, instance_id: str) -> None:
         """Send configured `gamerule` and `difficulty` commands to a running BDS instance via STDIN."""

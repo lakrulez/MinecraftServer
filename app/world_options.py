@@ -68,6 +68,9 @@ DEFAULT_WORLD_OPTIONS: dict[str, Any] = {
     # 2. Starting Gear, HUD & Player Experience
     "bonus_chest": False,
     "starting_map": False,
+    "starter_kit": "none",  # none | wood_stone | iron_coop | homestead_builder | diamond_champion
+    "starter_chest_loadout": "none",  # none | coop_gear_chest | house_builder_chest
+    "starter_house": "none",  # none | camp_pad | coop_cabin | stone_fortress
     "show_coordinates": True,
     "show_days_played": False,
     "player_locator": True,
@@ -243,6 +246,21 @@ def normalize_world_options(
     if auth_move not in ("client-auth", "server-auth", "server-auth-with-rewind"):
         auth_move = "server-auth"
     merged["server_authoritative_movement"] = auth_move
+
+    sk = str(merged.get("starter_kit", "none")).lower().strip()
+    if sk not in ("none", "wood_stone", "iron_coop", "homestead_builder", "diamond_champion"):
+        sk = "none"
+    merged["starter_kit"] = sk
+
+    sc = str(merged.get("starter_chest_loadout", "none")).lower().strip()
+    if sc not in ("none", "coop_gear_chest", "house_builder_chest"):
+        sc = "none"
+    merged["starter_chest_loadout"] = sc
+
+    sh = str(merged.get("starter_house", "none")).lower().strip()
+    if sh not in ("none", "camp_pad", "coop_cabin", "stone_fortress"):
+        sh = "none"
+    merged["starter_house"] = sh
 
     merged["spawn_radius"] = _clamp_int(merged.get("spawn_radius"), 5, 0, 128)
     merged["players_sleeping_percentage"] = _clamp_int(
@@ -762,3 +780,515 @@ def build_live_gamerule_commands(
         f"gamerule sendcommandfeedback {b(opts['send_command_feedback'])}",
     ]
     return cmds
+
+
+# -----------------------------------------------------------------------------
+# Starter Inventory Kits, Stocked Supply Chests & Auto-Built Co-Op Houses
+# -----------------------------------------------------------------------------
+
+
+def build_starter_kit_commands(
+    kit_tier: str,
+    selector: str = "@a[tag=!bn_starter_given]",
+    tag_after: bool = True,
+) -> list[str]:
+    """
+    Build console commands to equip and give a starter inventory kit to `selector`.
+    When `tag_after=True`, tags recipients with `bn_starter_given` so each player receives
+    their starter kit automatically once upon joining the world.
+    """
+    tier = (kit_tier or "none").lower().strip()
+    if tier == "none":
+        return []
+
+    cmds: list[str] = ["changesetting allow-cheats true"]
+
+    if tier == "wood_stone":
+        cmds.extend(
+            [
+                f"give {selector} stone_sword 1",
+                f"give {selector} stone_pickaxe 1",
+                f"give {selector} stone_axe 1",
+                f"give {selector} stone_shovel 1",
+                f"give {selector} stone_hoe 1",
+                f"give {selector} shield 1",
+                f"give {selector} bed 1 14",
+                f"give {selector} torch 64",
+                f"give {selector} cooked_beef 32",
+                f"give {selector} crafting_table 1",
+                f"give {selector} furnace 1",
+                f"give {selector} chest 2",
+                f"give {selector} oak_planks 64",
+                f"give {selector} cobblestone 64",
+                f"replaceitem entity {selector} slot.armor.head 0 leather_helmet 1",
+                f"replaceitem entity {selector} slot.armor.chest 0 leather_chestplate 1",
+                f"replaceitem entity {selector} slot.armor.legs 0 leather_leggings 1",
+                f"replaceitem entity {selector} slot.armor.feet 0 leather_boots 1",
+            ]
+        )
+    elif tier == "iron_coop":
+        cmds.extend(
+            [
+                f"give {selector} iron_sword 1",
+                f"give {selector} iron_pickaxe 1",
+                f"give {selector} iron_axe 1",
+                f"give {selector} iron_shovel 1",
+                f"give {selector} iron_hoe 1",
+                f"give {selector} shield 1",
+                f"give {selector} bow 1",
+                f"give {selector} arrow 64",
+                f"give {selector} bed 1 14",
+                f"give {selector} torch 64",
+                f"give {selector} cooked_beef 64",
+                f"give {selector} golden_apple 8",
+                f"give {selector} water_bucket 1",
+                f"give {selector} empty_map 1",
+                f"give {selector} compass 1",
+                f"give {selector} crafting_table 1",
+                f"give {selector} furnace 1",
+                f"give {selector} chest 2",
+                f"replaceitem entity {selector} slot.armor.head 0 iron_helmet 1",
+                f"replaceitem entity {selector} slot.armor.chest 0 iron_chestplate 1",
+                f"replaceitem entity {selector} slot.armor.legs 0 iron_leggings 1",
+                f"replaceitem entity {selector} slot.armor.feet 0 iron_boots 1",
+            ]
+        )
+    elif tier == "homestead_builder":
+        cmds.extend(
+            [
+                # Full Iron Gear & Armor
+                f"give {selector} iron_sword 1",
+                f"give {selector} iron_pickaxe 1",
+                f"give {selector} iron_axe 1",
+                f"give {selector} iron_shovel 1",
+                f"give {selector} shield 1",
+                f"give {selector} bow 1",
+                f"give {selector} arrow 64",
+                f"give {selector} bed 2 14",
+                f"give {selector} torch 64",
+                f"give {selector} lantern 16",
+                f"give {selector} cooked_beef 64",
+                f"give {selector} golden_apple 8",
+                f"give {selector} water_bucket 1",
+                f"give {selector} empty_map 1",
+                # Complete House Building Materials & Workstations in Inventory
+                f"give {selector} oak_planks 256",
+                f"give {selector} cobblestone 256",
+                f"give {selector} oak_log 64",
+                f"give {selector} stone_bricks 128",
+                f"give {selector} glass 64",
+                f"give {selector} oak_stairs 64",
+                f"give {selector} wooden_door 4",
+                f"give {selector} oak_fence 32",
+                f"give {selector} crafting_table 2",
+                f"give {selector} furnace 2",
+                f"give {selector} blast_furnace 1",
+                f"give {selector} smoker 1",
+                f"give {selector} anvil 1",
+                f"give {selector} chest 4",
+                f"replaceitem entity {selector} slot.armor.head 0 iron_helmet 1",
+                f"replaceitem entity {selector} slot.armor.chest 0 iron_chestplate 1",
+                f"replaceitem entity {selector} slot.armor.legs 0 iron_leggings 1",
+                f"replaceitem entity {selector} slot.armor.feet 0 iron_boots 1",
+            ]
+        )
+    elif tier == "diamond_champion":
+        cmds.extend(
+            [
+                f"give {selector} diamond_sword 1",
+                f"give {selector} diamond_pickaxe 1",
+                f"give {selector} diamond_axe 1",
+                f"give {selector} diamond_shovel 1",
+                f"give {selector} diamond_hoe 1",
+                f"give {selector} shield 1",
+                f"give {selector} bow 1",
+                f"give {selector} arrow 64",
+                f"give {selector} totem_of_undying 1",
+                f"give {selector} golden_apple 16",
+                f"give {selector} cooked_beef 64",
+                f"give {selector} bed 1 14",
+                f"give {selector} ender_chest 1",
+                f"give {selector} torch 64",
+                f"give {selector} lantern 16",
+                f"give {selector} water_bucket 1",
+                f"give {selector} oak_planks 128",
+                f"give {selector} cobblestone 128",
+                f"replaceitem entity {selector} slot.armor.head 0 diamond_helmet 1",
+                f"replaceitem entity {selector} slot.armor.chest 0 diamond_chestplate 1",
+                f"replaceitem entity {selector} slot.armor.legs 0 diamond_leggings 1",
+                f"replaceitem entity {selector} slot.armor.feet 0 diamond_boots 1",
+            ]
+        )
+
+    if tag_after and selector == "@a[tag=!bn_starter_given]":
+        cmds.append(f"tag {selector} add bn_starter_given")
+
+    return cmds
+
+
+def _stock_chest_commands(rel_pos: str, items: list[tuple[int, str, int]], at_selector: str) -> list[str]:
+    """Generate `execute at <selector> run replaceitem block <rel_pos> slot.container <slot> <item> <count>`."""
+    return [
+        f"execute at {at_selector} run replaceitem block {rel_pos} slot.container {slot} {item} {count}"
+        for slot, item, count in items
+    ]
+
+
+def build_starter_chest_commands(
+    loadout: str,
+    at_selector: str = "@a[c=1]",
+) -> list[str]:
+    """
+    Build console commands that place and stock 1 or 2 Co-Op Supply Chests & Workstations
+    2 blocks east of the target player (`~2 ~0 ~0` and `~2 ~0 ~1`).
+    """
+    mode = (loadout or "none").lower().strip()
+    if mode == "none":
+        return []
+
+    cmds: list[str] = [
+        "changesetting allow-cheats true",
+        f"execute at {at_selector} run setblock ~2 ~0 ~0 chest",
+        f"execute at {at_selector} run setblock ~2 ~1 ~0 torch",
+    ]
+
+    # Chest 1: Co-Op Weapons, Tools, Beds, Armor, Food & Navigation (27 slots: 0..26)
+    gear_items: list[tuple[int, str, int]] = [
+        (0, "bed", 1),
+        (1, "bed", 1),
+        (2, "bed", 1),
+        (3, "bed", 1),
+        (4, "iron_sword", 1),
+        (5, "iron_sword", 1),
+        (6, "iron_pickaxe", 1),
+        (7, "iron_pickaxe", 1),
+        (8, "iron_axe", 1),
+        (9, "iron_axe", 1),
+        (10, "iron_shovel", 1),
+        (11, "shield", 1),
+        (12, "shield", 1),
+        (13, "bow", 1),
+        (14, "arrow", 64),
+        (15, "cooked_beef", 64),
+        (16, "bread", 64),
+        (17, "golden_apple", 16),
+        (18, "torch", 64),
+        (19, "lantern", 16),
+        (20, "water_bucket", 1),
+        (21, "empty_map", 4),
+        (22, "compass", 4),
+        (23, "crafting_table", 2),
+        (24, "furnace", 2),
+        (25, "oak_planks", 64),
+        (26, "cobblestone", 64),
+    ]
+    cmds.extend(_stock_chest_commands("~2 ~0 ~0", gear_items, at_selector))
+
+    if mode == "house_builder_chest":
+        # Chest 2: Mega House-Builder Materials & Workstations (`~2 ~0 ~2`)
+        cmds.extend(
+            [
+                f"execute at {at_selector} run setblock ~2 ~0 ~2 barrel",
+                f"execute at {at_selector} run setblock ~2 ~1 ~2 lantern",
+            ]
+        )
+        builder_items: list[tuple[int, str, int]] = [
+            (0, "oak_planks", 64),
+            (1, "oak_planks", 64),
+            (2, "oak_planks", 64),
+            (3, "oak_planks", 64),
+            (4, "oak_planks", 64),
+            (5, "oak_planks", 64),
+            (6, "cobblestone", 64),
+            (7, "cobblestone", 64),
+            (8, "cobblestone", 64),
+            (9, "cobblestone", 64),
+            (10, "cobblestone", 64),
+            (11, "cobblestone", 64),
+            (12, "oak_log", 64),
+            (13, "oak_log", 64),
+            (14, "stone_bricks", 64),
+            (15, "stone_bricks", 64),
+            (16, "glass", 64),
+            (17, "glass", 64),
+            (18, "oak_stairs", 64),
+            (19, "oak_fence", 64),
+            (20, "wooden_door", 4),
+            (21, "lantern", 32),
+            (22, "blast_furnace", 2),
+            (23, "smoker", 2),
+            (24, "anvil", 1),
+            (25, "enchanting_table", 1),
+            (26, "bookshelf", 15),
+        ]
+        cmds.extend(_stock_chest_commands("~2 ~0 ~2", builder_items, at_selector))
+
+    return cmds
+
+
+def build_starter_house_commands(
+    house_type: str,
+    at_selector: str = "@a[c=1]",
+) -> list[str]:
+    """
+    Build console commands that construct a furnished Co-Op structure right next to `at_selector`
+    (offset `~4` blocks on +X so it never buries or traps the player):
+    - `camp_pad`: 5x5 Lit Cobblestone & Oak Base Camp with 4 Beds, Workstations & Stocked Chest
+    - `coop_cabin`: 9x5x9 Furnished Oak & Cobblestone Log Cabin with Roof, Windows, Doorway,
+      Lanterns, 4 Beds, Crafting/Smelting/Anvil Stations, and 2 Stocked Supply Chests
+    - `stone_fortress`: 11x6x11 Fortified Stone Brick Keep with Roof Battlements, Ladder,
+      Enchanting Corner, Workstations, 4 Beds, and 2 Stocked Supply Chests
+    """
+    kind = (house_type or "none").lower().strip()
+    if kind == "none":
+        return []
+
+    cmds: list[str] = ["changesetting allow-cheats true"]
+    ex = lambda c: f"execute at {at_selector} run {c}"
+
+    if kind == "camp_pad":
+        cmds.extend(
+            [
+                ex("fill ~3 ~0 ~-2 ~7 ~4 ~2 air"),
+                ex("fill ~3 ~-1 ~-2 ~7 ~-1 ~2 cobblestone"),
+                ex("fill ~4 ~-1 ~-1 ~6 ~-1 ~1 oak_planks"),
+                # Corner Fence & Lantern Posts
+                ex("setblock ~3 ~0 ~-2 oak_fence"),
+                ex("setblock ~3 ~1 ~-2 lantern"),
+                ex("setblock ~7 ~0 ~-2 oak_fence"),
+                ex("setblock ~7 ~1 ~-2 lantern"),
+                ex("setblock ~3 ~0 ~2 oak_fence"),
+                ex("setblock ~3 ~1 ~2 lantern"),
+                ex("setblock ~7 ~0 ~2 oak_fence"),
+                ex("setblock ~7 ~1 ~2 lantern"),
+                # Workstations & Beds
+                ex("setblock ~6 ~0 ~-1 crafting_table"),
+                ex("setblock ~6 ~0 ~0 furnace"),
+                ex("setblock ~6 ~0 ~1 blast_furnace"),
+                ex("setblock ~5 ~0 ~-2 bed"),
+                ex("setblock ~5 ~0 ~2 bed"),
+                ex("setblock ~4 ~0 ~0 chest"),
+            ]
+        )
+        cmds.extend(
+            _stock_chest_commands(
+                "~4 ~0 ~0",
+                [
+                    (0, "bed", 1),
+                    (1, "bed", 1),
+                    (2, "iron_sword", 2),
+                    (3, "iron_pickaxe", 2),
+                    (4, "iron_axe", 2),
+                    (5, "shield", 2),
+                    (6, "cooked_beef", 64),
+                    (7, "torch", 64),
+                    (8, "oak_planks", 64),
+                    (9, "cobblestone", 64),
+                ],
+                at_selector,
+            )
+        )
+        return cmds
+
+    if kind == "coop_cabin":
+        # 9x5x9 Furnished Co-Op Log Cabin from X: ~4..~12, Y: ~-1..~4, Z: ~-4..~4
+        cmds.extend(
+            [
+                # Clear interior + porch volume first
+                ex("fill ~3 ~0 ~-4 ~12 ~5 ~4 air"),
+                # Cobblestone Foundation & Front Porch Step
+                ex("fill ~3 ~-1 ~-4 ~12 ~-1 ~4 cobblestone"),
+                # Hollow Oak Plank Cabin Box
+                ex("fill ~4 ~0 ~-4 ~12 ~4 ~4 oak_planks outline"),
+                # Pitched / Slab Roof Cap & Cobblestone Trim
+                ex("fill ~4 ~4 ~-4 ~12 ~4 ~4 cobblestone"),
+                ex("fill ~5 ~4 ~-3 ~11 ~4 ~3 oak_planks"),
+                # 4 Oak Log Corner Pillars
+                ex("fill ~4 ~0 ~-4 ~4 ~4 ~-4 oak_log"),
+                ex("fill ~12 ~0 ~-4 ~12 ~4 ~-4 oak_log"),
+                ex("fill ~4 ~0 ~4 ~4 ~4 ~4 oak_log"),
+                ex("fill ~12 ~0 ~4 ~12 ~4 ~4 oak_log"),
+                # Glass Windows on North, South, East, and Front Walls
+                ex("fill ~7 ~1 ~-4 ~9 ~2 ~-4 glass"),
+                ex("fill ~7 ~1 ~4 ~9 ~2 ~4 glass"),
+                ex("fill ~12 ~1 ~-1 ~12 ~2 ~1 glass"),
+                ex("setblock ~4 ~1 ~-2 glass"),
+                ex("setblock ~4 ~2 ~-2 glass"),
+                ex("setblock ~4 ~1 ~2 glass"),
+                ex("setblock ~4 ~2 ~2 glass"),
+                # Front Entryway (2-high opening facing player at X=~4, Z=0) + Porch Lanterns
+                ex("fill ~4 ~0 ~0 ~4 ~1 ~0 air"),
+                ex("setblock ~3 ~2 ~-1 torch"),
+                ex("setblock ~3 ~2 ~1 torch"),
+                # Interior Ceiling Lanterns (Mob-proof illumination)
+                ex("setblock ~6 ~3 ~-2 lantern"),
+                ex("setblock ~6 ~3 ~2 lantern"),
+                ex("setblock ~10 ~3 ~-2 lantern"),
+                ex("setblock ~10 ~3 ~2 lantern"),
+                # Co-Op Bedroom Wall (North side: Beds)
+                ex("setblock ~6 ~0 ~-3 bed"),
+                ex("setblock ~8 ~0 ~-3 bed"),
+                ex("setblock ~10 ~0 ~-3 bed"),
+                # Crafting, Smelting & Forging Wall (East side: X=~11)
+                ex("setblock ~11 ~0 ~-2 crafting_table"),
+                ex("setblock ~11 ~0 ~-1 furnace"),
+                ex("setblock ~11 ~0 ~0 blast_furnace"),
+                ex("setblock ~11 ~0 ~1 smoker"),
+                ex("setblock ~11 ~0 ~2 anvil"),
+                ex("setblock ~11 ~0 ~3 grindstone"),
+                # Storage Wall (South side: Stocked Chest + Stocked Barrel)
+                ex("setblock ~6 ~0 ~3 chest"),
+                ex("setblock ~8 ~0 ~3 barrel"),
+                ex("setblock ~10 ~0 ~3 cartography_table"),
+            ]
+        )
+        # Stock Cabin Chest (`~6 ~0 ~3`) with Co-Op Weapons, Tools, Armor, Beds & Food
+        cmds.extend(
+            _stock_chest_commands(
+                "~6 ~0 ~3",
+                [
+                    (0, "bed", 1),
+                    (1, "bed", 1),
+                    (2, "bed", 1),
+                    (3, "bed", 1),
+                    (4, "iron_sword", 1),
+                    (5, "iron_sword", 1),
+                    (6, "iron_pickaxe", 1),
+                    (7, "iron_pickaxe", 1),
+                    (8, "iron_axe", 1),
+                    (9, "iron_axe", 1),
+                    (10, "iron_shovel", 1),
+                    (11, "shield", 1),
+                    (12, "shield", 1),
+                    (13, "bow", 1),
+                    (14, "arrow", 64),
+                    (15, "iron_helmet", 1),
+                    (16, "iron_chestplate", 1),
+                    (17, "iron_leggings", 1),
+                    (18, "iron_boots", 1),
+                    (19, "cooked_beef", 64),
+                    (20, "bread", 64),
+                    (21, "golden_apple", 16),
+                    (22, "torch", 64),
+                    (23, "water_bucket", 1),
+                    (24, "empty_map", 4),
+                    (25, "compass", 4),
+                    (26, "lantern", 16),
+                ],
+                at_selector,
+            )
+        )
+        # Stock Cabin Barrel (`~8 ~0 ~3`) with Building Materials & Enchanting Supplies
+        cmds.extend(
+            _stock_chest_commands(
+                "~8 ~0 ~3",
+                [
+                    (0, "oak_planks", 64),
+                    (1, "oak_planks", 64),
+                    (2, "oak_planks", 64),
+                    (3, "oak_planks", 64),
+                    (4, "cobblestone", 64),
+                    (5, "cobblestone", 64),
+                    (6, "cobblestone", 64),
+                    (7, "cobblestone", 64),
+                    (8, "oak_log", 64),
+                    (9, "stone_bricks", 64),
+                    (10, "glass", 64),
+                    (11, "oak_stairs", 64),
+                    (12, "oak_fence", 64),
+                    (13, "wooden_door", 4),
+                    (14, "enchanting_table", 1),
+                    (15, "bookshelf", 15),
+                ],
+                at_selector,
+            )
+        )
+        return cmds
+
+    if kind == "stone_fortress":
+        # 11x6x11 Fortified Stone Brick Keep from X: ~4..~14, Y: ~-1..~5, Z: ~-5..~5
+        cmds.extend(
+            [
+                ex("fill ~3 ~0 ~-5 ~14 ~6 ~5 air"),
+                ex("fill ~3 ~-1 ~-5 ~14 ~-1 ~5 stone_bricks"),
+                ex("fill ~4 ~0 ~-5 ~14 ~4 ~5 stone_bricks outline"),
+                # Roof Battlements (Crenellations)
+                ex("fill ~4 ~5 ~-5 ~14 ~5 ~5 stone_bricks outline"),
+                ex("fill ~5 ~5 ~-4 ~13 ~5 ~4 air"),
+                # Glass Windows
+                ex("fill ~8 ~1 ~-5 ~10 ~2 ~-5 glass"),
+                ex("fill ~8 ~1 ~5 ~10 ~2 ~5 glass"),
+                ex("fill ~14 ~1 ~-1 ~14 ~2 ~1 glass"),
+                # Front Gate Opening + Lanterns
+                ex("fill ~4 ~0 ~0 ~4 ~2 ~0 air"),
+                ex("setblock ~3 ~2 ~-1 lantern"),
+                ex("setblock ~3 ~2 ~1 lantern"),
+                # Interior Lighting
+                ex("setblock ~6 ~3 ~-3 lantern"),
+                ex("setblock ~6 ~3 ~3 lantern"),
+                ex("setblock ~12 ~3 ~-3 lantern"),
+                ex("setblock ~12 ~3 ~3 lantern"),
+                # Enchanting Library Corner & Workstations
+                ex("setblock ~12 ~0 ~-3 enchanting_table"),
+                ex("fill ~13 ~0 ~-4 ~13 ~1 ~-2 bookshelf"),
+                ex("setblock ~13 ~0 ~0 crafting_table"),
+                ex("setblock ~13 ~0 ~1 furnace"),
+                ex("setblock ~13 ~0 ~2 blast_furnace"),
+                ex("setblock ~13 ~0 ~3 smoker"),
+                ex("setblock ~13 ~0 ~4 anvil"),
+                # Beds & Stocked Chest/Barrel
+                ex("setblock ~6 ~0 ~-4 bed"),
+                ex("setblock ~8 ~0 ~-4 bed"),
+                ex("setblock ~10 ~0 ~-4 bed"),
+                ex("setblock ~6 ~0 ~4 chest"),
+                ex("setblock ~8 ~0 ~4 barrel"),
+            ]
+        )
+        cmds.extend(
+            _stock_chest_commands(
+                "~6 ~0 ~4",
+                [
+                    (0, "bed", 4),
+                    (1, "diamond_sword", 1),
+                    (2, "iron_sword", 3),
+                    (3, "iron_pickaxe", 4),
+                    (4, "iron_axe", 4),
+                    (5, "shield", 4),
+                    (6, "bow", 2),
+                    (7, "arrow", 64),
+                    (8, "cooked_beef", 64),
+                    (9, "golden_apple", 16),
+                    (10, "torch", 64),
+                    (11, "lantern", 32),
+                    (12, "water_bucket", 2),
+                    (13, "empty_map", 4),
+                    (14, "stone_bricks", 64),
+                    (15, "oak_planks", 64),
+                ],
+                at_selector,
+            )
+        )
+        cmds.extend(
+            _stock_chest_commands(
+                "~8 ~0 ~4",
+                [
+                    (0, "stone_bricks", 64),
+                    (1, "stone_bricks", 64),
+                    (2, "cobblestone", 64),
+                    (3, "cobblestone", 64),
+                    (4, "oak_planks", 64),
+                    (5, "oak_planks", 64),
+                    (6, "oak_log", 64),
+                    (7, "glass", 64),
+                    (8, "iron_helmet", 4),
+                    (9, "iron_chestplate", 4),
+                    (10, "iron_leggings", 4),
+                    (11, "iron_boots", 4),
+                ],
+                at_selector,
+            )
+        )
+        return cmds
+
+    return []
+

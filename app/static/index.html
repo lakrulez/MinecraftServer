@@ -411,7 +411,10 @@
           🌍 Standard Survival
         </button>
         <button type="button" onclick="applyWorldPreset('coop_starter')" class="px-2.5 py-1 rounded-lg bg-emerald-950/80 hover:bg-emerald-900/70 text-emerald-300 border border-emerald-700/50 font-medium shrink-0 cursor-pointer transition">
-          🎒 Co-Op Starter (Chest + Map + Coords + 1P Sleep)
+          🎒 Co-Op Starter (Iron Kit + Chest + Map + 1P Sleep)
+        </button>
+        <button type="button" onclick="applyWorldPreset('coop_homestead')" class="px-2.5 py-1 rounded-lg bg-amber-950/80 hover:bg-amber-900/70 text-amber-300 border border-amber-700/50 font-medium shrink-0 cursor-pointer transition">
+          🏡 Co-Op Homestead (Furnished Cabin + Builder Kit + 2 Chests)
         </button>
         <button type="button" onclick="applyWorldPreset('hardcore')" class="px-2.5 py-1 rounded-lg bg-rose-950/80 hover:bg-rose-900/70 text-rose-300 border border-rose-700/50 font-medium shrink-0 cursor-pointer transition">
           💀 Hardcore Survival
@@ -433,7 +436,7 @@
           1. 🌍 World &amp; Hardcore
         </button>
         <button type="button" id="wtab-btn-starter" onclick="switchWizardTab('starter')" class="px-3 py-2 rounded-t-lg border-b-2 border-transparent text-slate-400 hover:text-slate-200 cursor-pointer shrink-0">
-          2. 🎒 Chest, Map &amp; HUD
+          2. 🎒 Kits, Cabin, Chest &amp; HUD
         </button>
         <button type="button" id="wtab-btn-survival" onclick="switchWizardTab('survival')" class="px-3 py-2 rounded-t-lg border-b-2 border-transparent text-slate-400 hover:text-slate-200 cursor-pointer shrink-0">
           3. ⚔ Combat, Death &amp; Sleep
@@ -583,8 +586,64 @@
           </label>
         </div>
 
-        <!-- TAB 2: Starter Gear & HUD (Bonus Chest, Starting Map, Coordinates, Days Played) -->
+        <!-- TAB 2: Starter Gear, Auto-Built Cabin, Stocked Chests & HUD -->
         <div id="wtab-panel-starter" class="hidden space-y-3">
+          <!-- Starter Inventory Kit, Stocked Supply Chests & Auto-Built Co-Op House Cards -->
+          <div class="grid grid-cols-1 gap-3 p-3.5 rounded-2xl bg-slate-950/90 border border-emerald-500/30">
+            <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-2">
+              <div>
+                <h4 class="text-xs font-bold text-emerald-300 uppercase tracking-wider">🏡 Co-Op Starter Kits, Stocked Chests &amp; Auto-Built Cabin</h4>
+                <p class="text-[11px] text-slate-400">Automatically gives new players weapons, tools, beds, armor, and builds a furnished house or supply chest when they spawn.</p>
+              </div>
+              <div class="flex flex-wrap items-center gap-1.5">
+                <button type="button" onclick="triggerWizardStarterAction('kit')" class="px-2 py-1 rounded bg-emerald-600/25 hover:bg-emerald-600/40 text-emerald-300 border border-emerald-500/40 text-[10px] font-mono cursor-pointer">
+                  🎁 Give Kit Now
+                </button>
+                <button type="button" onclick="triggerWizardStarterAction('chest')" class="px-2 py-1 rounded bg-amber-600/25 hover:bg-amber-600/40 text-amber-300 border border-amber-500/40 text-[10px] font-mono cursor-pointer">
+                  📦 Spawn Chest Now
+                </button>
+                <button type="button" onclick="triggerWizardStarterAction('house')" class="px-2 py-1 rounded bg-sky-600/25 hover:bg-sky-600/40 text-sky-300 border border-sky-500/40 text-[10px] font-mono cursor-pointer">
+                  🏡 Build House Now
+                </button>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label class="block text-xs font-semibold text-emerald-300 mb-1">🎁 Player Starter Inventory Kit</label>
+                <select id="opt-starter_kit" class="w-full rounded-lg bg-slate-900 border border-slate-700 px-2.5 py-2 text-xs text-white focus:border-emerald-500">
+                  <option value="none">None (Empty Inventory)</option>
+                  <option value="wood_stone">🪵 Pioneer Kit (Stone Sword/Pick/Axe, Leather Armor, Bed, Steak, Wood/Stone)</option>
+                  <option value="iron_coop">⚔ Co-Op Iron Kit (Iron Sword/Pick/Axe, Full Iron Armor, Shield, Bow, Bed, Steak)</option>
+                  <option value="homestead_builder">🏠 Homestead Builder Kit (Full Iron Gear/Armor + 700+ House Blocks, Beds &amp; Furnaces)</option>
+                  <option value="diamond_champion">💎 Diamond Champion Kit (Full Diamond Weapons/Tools/Armor, Totem, Golden Apples, Bed)</option>
+                </select>
+                <p class="text-[10px] text-slate-400 mt-1">Automatically given &amp; armor-equipped once per player when they join.</p>
+              </div>
+
+              <div>
+                <label class="block text-xs font-semibold text-amber-300 mb-1">📦 Stocked Spawn Supply Chests</label>
+                <select id="opt-starter_chest_loadout" class="w-full rounded-lg bg-slate-900 border border-slate-700 px-2.5 py-2 text-xs text-white focus:border-amber-500">
+                  <option value="none">None (Vanilla Bonus Chest Only)</option>
+                  <option value="coop_gear_chest">⚔ Co-Op Gear Chest (4 Beds, Iron Swords/Picks/Axes, Shields, Bow, Steak, Maps)</option>
+                  <option value="house_builder_chest">🧱 Mega House-Builder Chests (Gear Chest + Barrel with 1,000+ Planks/Stone/Glass/Doors)</option>
+                </select>
+                <p class="text-[10px] text-slate-400 mt-1">Places stocked chest(s) 2 blocks away from the first player at spawn.</p>
+              </div>
+
+              <div>
+                <label class="block text-xs font-semibold text-sky-300 mb-1">🏡 Auto-Build Starter House at Spawn</label>
+                <select id="opt-starter_house" class="w-full rounded-lg bg-slate-900 border border-slate-700 px-2.5 py-2 text-xs text-white focus:border-sky-500">
+                  <option value="none">None (Players Build Their Own)</option>
+                  <option value="camp_pad">⛺ Lit 5×5 Co-Op Camp Pad (Lanterns, 4 Beds, Workstations &amp; Stocked Chest)</option>
+                  <option value="coop_cabin">🏡 Furnished 9×5×9 Co-Op Log Cabin (Roof, Windows, 4 Beds, Anvil/Furnaces &amp; 2 Stocked Chests)</option>
+                  <option value="stone_fortress">🏰 Fortified 11×6×11 Stone Brick Keep (Battlements, Enchanting Library, 4 Beds &amp; 2 Chests)</option>
+                </select>
+                <p class="text-[10px] text-slate-400 mt-1">Automatically constructs a furnished, lit base right next to world spawn.</p>
+              </div>
+            </div>
+          </div>
+
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <label class="flex items-start justify-between gap-3 p-3.5 rounded-xl bg-amber-950/20 border border-amber-500/30 hover:border-amber-500/50 cursor-pointer">
               <div>
@@ -1448,7 +1507,10 @@
                 <span class="px-2 py-0.5 rounded bg-slate-950 text-slate-300 border border-slate-800">${inst.players_online}/${inst.max_players} Players</span>
                 ${inst.options?.hardcore ? `<span class="px-2 py-0.5 rounded bg-rose-950/80 text-rose-300 border border-rose-500/40 font-semibold">💀 HARDCORE</span>` : ''}
                 ${inst.options?.world_type === 'FLAT' ? `<span class="px-2 py-0.5 rounded bg-purple-950/70 text-purple-300 border border-purple-500/40">🌍 FLAT</span>` : ''}
-                ${inst.options?.bonus_chest ? `<span class="px-2 py-0.5 rounded bg-amber-950/70 text-amber-300 border border-amber-500/40">📦 CHEST</span>` : ''}
+                ${(inst.options?.starter_kit && inst.options.starter_kit !== 'none') ? `<span class="px-2 py-0.5 rounded bg-emerald-950/80 text-emerald-300 border border-emerald-500/40">🎁 KIT: ${escapeHtml(inst.options.starter_kit.toUpperCase())}</span>` : ''}
+                ${(inst.options?.starter_house && inst.options.starter_house !== 'none') ? `<span class="px-2 py-0.5 rounded bg-sky-950/80 text-sky-300 border border-sky-500/40">🏡 ${escapeHtml(inst.options.starter_house.toUpperCase())}</span>` : ''}
+                ${(inst.options?.starter_chest_loadout && inst.options.starter_chest_loadout !== 'none') ? `<span class="px-2 py-0.5 rounded bg-amber-950/80 text-amber-300 border border-amber-500/40">📦 SUPPLY CHEST</span>` : ''}
+                ${inst.options?.bonus_chest ? `<span class="px-2 py-0.5 rounded bg-amber-950/70 text-amber-300 border border-amber-500/40">📦 BONUS CHEST</span>` : ''}
                 ${inst.options?.starting_map ? `<span class="px-2 py-0.5 rounded bg-sky-950/70 text-sky-300 border border-sky-500/40">🗺 MAP</span>` : ''}
                 ${inst.options?.show_coordinates ? `<span class="px-2 py-0.5 rounded bg-emerald-950/70 text-emerald-300 border border-emerald-500/40">📍 COORDS</span>` : ''}
                 ${inst.options?.show_days_played ? `<span class="px-2 py-0.5 rounded bg-indigo-950/70 text-indigo-300 border border-indigo-500/40">📅 DAYS</span>` : ''}
@@ -1496,6 +1558,20 @@
                   &gt;_ Console
                 </button>
               </div>
+
+              ${isOnline ? `
+                <div class="grid grid-cols-3 gap-1.5 pt-1">
+                  <button onclick="triggerStarterAction('${inst.id}', 'kit')" class="py-1 px-2 rounded-md bg-emerald-950/50 hover:bg-emerald-900/60 text-emerald-300 text-[10px] font-mono border border-emerald-700/40 transition cursor-pointer" title="Give Starter Inventory Kit &amp; Armor to all online players now">
+                    🎁 Give Kit
+                  </button>
+                  <button onclick="triggerStarterAction('${inst.id}', 'chest')" class="py-1 px-2 rounded-md bg-amber-950/50 hover:bg-amber-900/60 text-amber-300 text-[10px] font-mono border border-amber-700/40 transition cursor-pointer" title="Spawn Stocked Co-Op Supply Chests next to player now">
+                    📦 Supply Chest
+                  </button>
+                  <button onclick="triggerStarterAction('${inst.id}', 'house')" class="py-1 px-2 rounded-md bg-sky-950/50 hover:bg-sky-900/60 text-sky-300 text-[10px] font-mono border border-sky-700/40 transition cursor-pointer" title="Build Furnished Co-Op Log Cabin next to player now">
+                    🏡 Build Cabin
+                  </button>
+                </div>
+              ` : ''}
 
               <div class="flex items-center justify-between gap-1.5 pt-1">
                 <button onclick="openEditModal('${inst.id}')" class="flex-1 py-1 px-2 rounded-md bg-emerald-950/60 hover:bg-emerald-900/60 text-emerald-300 text-[11px] font-mono border border-emerald-700/50 transition cursor-pointer" title="Configure Hardcore, Coordinates, Bonus Chest, Map, and all 44+ Gamerules">
@@ -1880,6 +1956,9 @@
       force_gamemode: false,
       bonus_chest: false,
       starting_map: false,
+      starter_kit: 'none',
+      starter_chest_loadout: 'none',
+      starter_house: 'none',
       show_coordinates: true,
       show_days_played: false,
       player_locator: true,
@@ -1960,6 +2039,7 @@
     ];
 
     const STR_OPT_KEYS = [
+      'starter_kit', 'starter_chest_loadout', 'starter_house',
       'default_permission_level', 'chat_restriction', 'server_authoritative_movement'
     ];
 
@@ -2040,10 +2120,27 @@
         document.getElementById('wiz-difficulty').value = 'normal';
         base.bonus_chest = true;
         base.starting_map = true;
+        base.starter_kit = 'iron_coop';
+        base.starter_chest_loadout = 'coop_gear_chest';
+        base.starter_house = 'camp_pad';
         base.show_coordinates = true;
         base.show_days_played = true;
         base.players_sleeping_percentage = 1;
         base.pvp = false;
+      } else if (presetKey === 'coop_homestead') {
+        document.getElementById('wiz-gamemode').value = 'survival';
+        document.getElementById('wiz-difficulty').value = 'normal';
+        base.bonus_chest = true;
+        base.starting_map = true;
+        base.starter_kit = 'homestead_builder';
+        base.starter_chest_loadout = 'house_builder_chest';
+        base.starter_house = 'coop_cabin';
+        base.show_coordinates = true;
+        base.show_days_played = true;
+        base.players_sleeping_percentage = 1;
+        base.pvp = false;
+        base.mob_griefing = false;
+        base.fire_spreads = false;
       } else if (presetKey === 'hardcore') {
         document.getElementById('wiz-gamemode').value = 'survival';
         document.getElementById('wiz-difficulty').value = 'hard';
@@ -2141,6 +2238,38 @@
     function randomizeSeed() {
       const randomSeed = Math.floor(Math.random() * 900000000000) - 450000000000;
       document.getElementById('wiz-seed').value = String(randomSeed);
+    }
+
+    async function triggerStarterAction(instanceId, actionType, preset = '') {
+      try {
+        selectConsoleInstance(instanceId);
+        const res = await fetch(`/api/instances/${instanceId}/starter-action`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action_type: actionType, preset })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || `Failed to run starter ${actionType}`);
+        showToast(
+          `Dispatched <strong>${escapeHtml(actionType.toUpperCase())}</strong> (${data.commands_sent} commands) to online players!`,
+          'success'
+        );
+      } catch (err) {
+        showToast(escapeHtml(err.message), 'error');
+      }
+    }
+
+    async function triggerWizardStarterAction(actionType) {
+      const editId = document.getElementById('wiz-edit-instance-id').value.trim() || state.selectedInstanceId;
+      if (!editId) {
+        showToast('Create or select a running server instance first.', 'warn');
+        return;
+      }
+      let preset = '';
+      if (actionType === 'kit') preset = document.getElementById('opt-starter_kit').value;
+      if (actionType === 'chest') preset = document.getElementById('opt-starter_chest_loadout').value;
+      if (actionType === 'house') preset = document.getElementById('opt-starter_house').value;
+      await triggerStarterAction(editId, actionType, preset === 'none' ? '' : preset);
     }
 
     async function submitCreateInstance(e) {

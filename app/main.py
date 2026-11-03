@@ -61,6 +61,11 @@ class ConsoleCommandRequest(BaseModel):
     command: str = Field(..., min_length=1, max_length=500)
 
 
+class StarterActionRequest(BaseModel):
+    action_type: str = Field(..., description="kit | chest | house")
+    preset: str = Field(default="")
+
+
 class BroadcasterUpdateRequest(BaseModel):
     enabled: bool | None = None
     target_instance_id: str | None = None
@@ -406,6 +411,20 @@ async def api_send_command(instance_id: str, req: ConsoleCommandRequest) -> dict
     except RuntimeError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"ok": True, "instance_id": instance_id, "command": req.command}
+
+
+@app.post("/api/instances/{instance_id}/starter-action")
+async def api_trigger_starter_action(instance_id: str, req: StarterActionRequest) -> dict[str, Any]:
+    try:
+        return await manager.trigger_starter_action(
+            instance_id=instance_id,
+            action_type=req.action_type,
+            preset=req.preset,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @app.get("/api/instances/{instance_id}/logs")
