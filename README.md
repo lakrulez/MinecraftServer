@@ -16,6 +16,14 @@ A self-hosted, zero-config **Minecraft Bedrock Multi-Server Manager** with a dar
 - **Simultaneous Multi-Server LAN Discovery (`UDP 7551` NetherNet & `UDP 19132` RakNet):**
   - **NetherNet (`UDP 7551`) Proxy (Bedrock 1.21+ / 1.26+):** Fans out LAN discovery requests (`DiscoveryRequestPacket`) to all running instances simultaneously so **every online server appears at the same time** in the Minecraft **Worlds -> LAN Games** tab, and routes WebRTC connection signaling (`DiscoveryMessagePacket`) to the exact server clicked by inspecting the 64-bit `recipient_network_id`.
   - **RakNet (`UDP 19132`) Console Bridge:** Responds to `ID_UNCONNECTED_PING` (`0x01`/`0x02`) with `ID_UNCONNECTED_PONG` (`0x1c`) and transparently bridges console traffic to the selected primary instance.
+- **47+ World & Server Options + Native `level.dat` NBT Patcher (`app/world_options.py`):**
+  - Full control over **Hardcore Mode (`is_hardcore`)**, **Player Coordinates (`show_coordinates`)**, **Days Played (`show_days_played`)**, **Bonus Chest (`bonus_chest_enabled`)**, **Starting Map (`start_with_map_enabled`)**, **Keep Inventory (`keep_inventory`)**, **Immediate Respawn**, **PvP**, **Mob Griefing**, **Fire / TNT / Respawn Blocks Explode**, **Weather / Daylight Cycles**, **Players Sleeping %**, **Spawn Radius**, **Generator Type (Infinite / Flat / Legacy)**, **Anti-Cheat & Network Compression**, and **Experimental Features**.
+  - Writes directly to both `server.properties`, pure-Python Bedrock Little-Endian NBT `level.dat`, and live `gamerule` STDIN synchronization.
+- **Co-Op Starter Kits, Stocked Supply Chests & Auto-Built Starter Houses (`app/world_options.py` & `app/manager.py`):**
+  - **One-Click Presets:** Includes **🏡 Co-Op Homestead** (Furnished Cabin + Homestead Builder Kit + 2 Chests), **🎒 Co-Op Starter**, **💀 Hardcore Survival**, **🛡️ Keep-Inventory Chill**, **🎨 Creative Builder**, and **🌱 Vanilla Default**.
+  - **Player Starter Inventory Kits:** Automatically grants joining players (once per player via tag `bn_starter_given`) equipped armor, weapons, tools, beds, food, maps, and up to **700+ house-building blocks** (*Wood & Stone Camper*, *Co-Op Iron Squad*, *Homestead Builder*, or *Diamond Champion*).
+  - **Stocked Co-Op Supply Chests:** Spawns 1 or 2 chests at spawn filled with 4 beds, 4 sets of iron tools/weapons/shields, food, torches, maps, workstations, enchanting table + 15 bookshelves, and **1,000+ building blocks**.
+  - **Auto-Built Furnished Starter Houses:** Automatically constructs a **⛺ 5×5 Lit Base Camp Pad**, **🏡 9×5×9 Furnished Co-Op Oak & Cobblestone Log Cabin**, or **🏰 11×6×11 Fortified Stone Brick Keep** (complete with roof, glass windows, doors, lanterns, 4 beds, crafting/smelting/enchanting stations, and 2 stocked chests) when the first player spawns—or on demand anytime via the **`🎁 Kit`**, **`📦 Chest`**, and **`🏡 Cabin`** buttons.
 - **Real-Time Interactive Console & World Backup Automation:**
   - Live WebSocket-streamed server console logs with ANSI color rendering and interactive `STDIN` command bar.
   - One-click hot backups (`save hold` -> `save query` -> `.zip` archive -> `save resume`), restore, and `.mcworld` import.
@@ -30,10 +38,11 @@ MinecraftServer/
 │   ├── main.py          # FastAPI backend, REST API, WebSocket hub & background self-healer
 │   ├── bootstrap.py     # Auto-downloader (BDS + VC++ Redist), Firewall fixer & Self-Test engine
 │   ├── manager.py       # Instance supervisor, SQLite store, port allocator & backup manager
+│   ├── world_options.py # 47+ world/server options, level.dat NBT editor, Starter Kits & Cabin builder
 │   ├── broadcaster.py   # Async UDP RakNet (19132) & NetherNet (7551) LAN Discovery Proxy
 │   ├── bds_runtime.py   # Built-in fallback BDS-compatible simulator engine
 │   └── static/
-│       └── index.html   # Responsive dark-mode Web GUI dashboard with Live Self-Test bar
+│       └── index.html   # Responsive dark-mode Web GUI dashboard with 6-Tab World Builder & Presets
 ├── redist/              # Bundled Microsoft VC++ 2015-2022 x64 runtime DLLs (committed to git)
 ├── bds_bin/             # Official Mojang Bedrock Dedicated Server binary (auto-downloaded)
 ├── instances/           # Per-instance isolated server directories & worlds (gitignored)
