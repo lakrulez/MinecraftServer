@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    One-click self-bootstrapping startup script for BedrockNexus — Minecraft Bedrock Multi-Server Manager & LAN Proxy.
+    One-click self-bootstrapping startup script for BedrockNexus -- Minecraft Bedrock Multi-Server Manager & LAN Proxy.
     Automatically installs Python (if missing), Python packages, Visual C++ Runtime DLLs,
     Mojang Bedrock Dedicated Server binary, and Windows Firewall LAN rules.
 #>
@@ -8,7 +8,7 @@ $ErrorActionPreference = "Continue"
 Set-Location -Path $PSScriptRoot
 
 Write-Host "==================================================================" -ForegroundColor Cyan
-Write-Host "  BedrockNexus — Self-Healing Bedrock Multi-Server Manager & Proxy" -ForegroundColor Green
+Write-Host "  BedrockNexus -- Self-Healing Bedrock Multi-Server Manager & Proxy" -ForegroundColor Green
 Write-Host "==================================================================" -ForegroundColor Cyan
 
 function Find-PythonExe {

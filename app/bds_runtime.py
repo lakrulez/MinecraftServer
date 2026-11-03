@@ -331,7 +331,7 @@ class BDSRuntime:
 
         if verb == "time":
             sub = " ".join(parts[1:]) if len(parts) > 1 else "set day"
-            log_cmd(f"Time updated ({sub}) — world clock synchronized.")
+            log_cmd(f"Time updated ({sub}) -- world clock synchronized.")
             return
 
         if verb == "gamemode":

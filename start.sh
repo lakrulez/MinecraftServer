@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 echo "=================================================================="
-echo "  BedrockNexus — Minecraft Bedrock Multi-Server Manager & Proxy   "
+echo "  BedrockNexus -- Minecraft Bedrock Multi-Server Manager & Proxy  "
 echo "=================================================================="
 
 PYTHON_BIN="python3"

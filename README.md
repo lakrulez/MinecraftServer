@@ -1,4 +1,4 @@
-# BedrockNexus — Self-Healing Minecraft Bedrock Multi-Server Manager & LAN Discovery Proxy
+# BedrockNexus -- Self-Healing Minecraft Bedrock Multi-Server Manager & LAN Discovery Proxy
 
 A self-hosted, zero-config **Minecraft Bedrock Multi-Server Manager** with a dark-mode Web GUI, real-time WebSocket console & telemetry, world backup/import automation, **automatic dependency & binary bootstrapper**, and a **self-testing / self-correcting RakNet (`UDP 19132`) + NetherNet (`UDP 7551`) LAN Discovery Proxy** for simultaneous multi-server LAN discovery across mobile, PC, and consoles (Nintendo Switch / PlayStation / Xbox).
 
@@ -7,7 +7,7 @@ A self-hosted, zero-config **Minecraft Bedrock Multi-Server Manager** with a dar
 ## Key Features
 
 - **Zero-Touch Auto-Bootstrapper (`app/bootstrap.py` & `redist/`):**
-  - **Bundled Visual C++ Runtime DLLs (`redist/`):** Includes all required Microsoft VC++ 140 x64 runtime DLLs (`msvcp140.dll`, `vcruntime140.dll`, `vcruntime140_1.dll`, `concrt140.dll`, etc.) directly in the repository and automatically copies them into `bds_bin/` and every instance folder—plus auto-downloads & installs `vc_redist.x64.exe` if needed—so `bedrock_server.exe` never fails with `0xC0000135` on a fresh Windows PC.
+  - **Bundled Visual C++ Runtime DLLs (`redist/`):** Includes all required Microsoft VC++ 140 x64 runtime DLLs (`msvcp140.dll`, `vcruntime140.dll`, `vcruntime140_1.dll`, `concrt140.dll`, etc.) directly in the repository and automatically copies them into `bds_bin/` and every instance folder -- plus auto-downloads & installs `vc_redist.x64.exe` if needed -- so `bedrock_server.exe` never fails with `0xC0000135` on a fresh Windows PC.
   - **Automatic Official Mojang BDS Download:** Automatically downloads and extracts the official Mojang Bedrock Dedicated Server (`bedrock-server-1.26.61.1.zip`) into `bds_bin/` on first run if `bds_bin/bedrock_server.exe` is missing.
   - **Automatic Windows Firewall Configuration:** Removes any accidental Windows Firewall `Block` rules on `python.exe` or `bedrock_server.exe` and opens inbound/outbound LAN discovery rules across `Domain`, `Private`, and `Public` profiles (`UDP 7551`, `UDP 19132-19165`, `UDP 20132-20165`, `UDP 49152-65535`, `TCP 8000`).
 - **Continuous Self-Test & Auto-Healing Engine (`SelfHealingCoordinator`):**
@@ -23,7 +23,7 @@ A self-hosted, zero-config **Minecraft Bedrock Multi-Server Manager** with a dar
   - **One-Click Presets:** Includes **🏡 Co-Op Homestead** (Furnished Cabin + Homestead Builder Kit + 2 Chests), **🎒 Co-Op Starter**, **💀 Hardcore Survival**, **🛡️ Keep-Inventory Chill**, **🎨 Creative Builder**, and **🌱 Vanilla Default**.
   - **Player Starter Inventory Kits:** Automatically grants joining players (once per player via tag `bn_starter_given`) equipped armor, weapons, tools, beds, food, maps, and up to **700+ house-building blocks** (*Wood & Stone Camper*, *Co-Op Iron Squad*, *Homestead Builder*, or *Diamond Champion*).
   - **Stocked Co-Op Supply Chests:** Spawns 1 or 2 chests at spawn filled with 4 beds, 4 sets of iron tools/weapons/shields, food, torches, maps, workstations, enchanting table + 15 bookshelves, and **1,000+ building blocks**.
-  - **Auto-Built Furnished Starter Houses:** Automatically constructs a **⛺ 5×5 Lit Base Camp Pad**, **🏡 9×5×9 Furnished Co-Op Oak & Cobblestone Log Cabin**, or **🏰 11×6×11 Fortified Stone Brick Keep** (complete with roof, glass windows, doors, lanterns, 4 beds, crafting/smelting/enchanting stations, and 2 stocked chests) when the first player spawns—or on demand anytime via the **`🎁 Kit`**, **`📦 Chest`**, and **`🏡 Cabin`** buttons.
+  - **Auto-Built Furnished Starter Houses:** Automatically constructs a **⛺ 5×5 Lit Base Camp Pad**, **🏡 9×5×9 Furnished Co-Op Oak & Cobblestone Log Cabin**, or **🏰 11×6×11 Fortified Stone Brick Keep** (complete with roof, glass windows, doors, lanterns, 4 beds, crafting/smelting/enchanting stations, and 2 stocked chests) when the first player spawns -- or on demand anytime via the **`🎁 Kit`**, **`📦 Chest`**, and **`🏡 Cabin`** buttons.
 - **Real-Time Interactive Console & World Backup Automation:**
   - Live WebSocket-streamed server console logs with ANSI color rendering and interactive `STDIN` command bar.
   - One-click hot backups (`save hold` -> `save query` -> `.zip` archive -> `save resume`), restore, and `.mcworld` import.
