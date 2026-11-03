@@ -186,17 +186,30 @@
               </select>
             </div>
 
-            <!-- Diagnostic Ping Button -->
-            <button
-              onclick="testRakNetPing()"
-              title="Send a live UDP 0x01 Unconnected Ping to 127.0.0.1:19132 and inspect the 0x1c Pong"
-              class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-mono font-medium transition flex items-center gap-1.5 shrink-0 cursor-pointer"
-            >
-              <svg class="w-3.5 h-3.5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
-              </svg>
-              Verify 0x1c Pong
-            </button>
+            <!-- Diagnostic Ping & Self-Heal Buttons -->
+            <div class="flex items-center gap-2 shrink-0">
+              <button
+                onclick="testRakNetPing()"
+                title="Send a live UDP 0x01 Unconnected Ping to 127.0.0.1:19132 and inspect the 0x1c Pong"
+                class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-mono font-medium transition flex items-center gap-1.5 shrink-0 cursor-pointer"
+              >
+                <svg class="w-3.5 h-3.5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                </svg>
+                Verify 0x1c Pong
+              </button>
+              <button
+                id="self-heal-btn"
+                onclick="runSelfHeal()"
+                title="Run full NetherNet (UDP 7551) + RakNet (UDP 19132) + VC++ + Firewall self-test and automatically repair any issues"
+                class="px-3 py-2 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/40 text-xs font-mono font-semibold transition flex items-center gap-1.5 shrink-0 cursor-pointer"
+              >
+                <svg class="w-3.5 h-3.5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+                </svg>
+                Self-Test &amp; Auto-Heal
+              </button>
+            </div>
           </div>
         </div>
 
@@ -221,6 +234,14 @@
           <div class="col-span-2 sm:col-span-4 lg:col-span-1 bg-slate-950/60 rounded-lg px-3 py-2 border border-slate-800/60">
             <div class="text-slate-400 text-[11px]">Live Bedrock MOTD Payload</div>
             <div id="proxy-motd-display" class="font-mono text-[11px] text-slate-300 mt-0.5 truncate" title="">—</div>
+          </div>
+        </div>
+
+        <!-- Live Self-Diagnostic & Auto-Correction Status Strip -->
+        <div id="diagnostics-strip" class="mt-3 pt-3 border-t border-slate-800/60 flex flex-wrap items-center justify-between gap-2 text-[11px]">
+          <div class="flex items-center gap-2 text-slate-400 font-mono">
+            <span class="w-2 h-2 rounded-full bg-slate-500"></span>
+            <span>Initializing self-correcting broadcast verifier...</span>
           </div>
         </div>
       </div>
@@ -499,6 +520,7 @@
       broadcaster: {},
       backups: [],
       host: {},
+      diagnostics: null,
       selectedInstanceId: null,
       logsByInstance: {},
       commandHistory: [],
@@ -594,6 +616,7 @@
           state.broadcaster = msg.broadcaster || {};
           state.backups = msg.backups || [];
           state.host = msg.host || {};
+          state.diagnostics = msg.diagnostics || null;
           state.logsByInstance = msg.logs || {};
           if (!state.selectedInstanceId && state.instances.length > 0) {
             state.selectedInstanceId = state.broadcaster.target_instance_id || state.instances[0].id;
@@ -604,11 +627,15 @@
           state.instances = msg.instances || [];
           state.broadcaster = msg.broadcaster || {};
           state.host = msg.host || {};
+          if (msg.diagnostics) {
+            state.diagnostics = msg.diagnostics;
+          }
           if (!state.selectedInstanceId && state.instances.length > 0) {
             state.selectedInstanceId = state.instances[0].id;
           }
           renderHostMetrics();
           renderBroadcaster();
+          renderDiagnostics();
           renderInstances();
           renderConsoleTabs();
         } else if (msg.type === 'console_line') {
@@ -644,6 +671,7 @@
     function renderAll() {
       renderHostMetrics();
       renderBroadcaster();
+      renderDiagnostics();
       renderInstances();
       renderConsoleTabs();
       renderBackups();
@@ -715,6 +743,53 @@
       const motdEl = document.getElementById('proxy-motd-display');
       motdEl.textContent = b.motd_preview || '—';
       motdEl.title = b.motd_preview || '';
+    }
+
+    function renderDiagnostics() {
+      const strip = document.getElementById('diagnostics-strip');
+      if (!strip) return;
+      const d = state.diagnostics;
+      if (!d || !d.checks) {
+        strip.innerHTML = `
+          <div class="flex items-center gap-2 text-slate-400 font-mono">
+            <span class="w-2 h-2 rounded-full bg-slate-500 animate-pulse"></span>
+            <span>Auto-Self-Test: Running initial broadcast &amp; dependency verification...</span>
+          </div>
+        `;
+        return;
+      }
+
+      const overallPill = d.ok
+        ? `<span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-mono font-semibold">
+             <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>SELF-TEST PASSED
+           </span>`
+        : `<span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30 font-mono font-semibold">
+             <span class="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping"></span>AUTO-CORRECTING
+           </span>`;
+
+      const checksHtml = (d.checks || []).map(c => {
+        const dot = c.ok ? 'text-emerald-400' : 'text-amber-400';
+        const symbol = c.ok ? '✓' : '↻';
+        return `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-950/70 border border-slate-800/80 font-mono text-slate-300" title="${escapeHtml(c.detail || '')}">
+          <span class="${dot} font-bold">${symbol}</span>
+          <span>${escapeHtml(c.name)}</span>
+        </span>`;
+      }).join('');
+
+      const responders = (d.nethernet_responders || []).map(r => escapeHtml(r.server_name)).join(', ');
+      const responderText = responders
+        ? `<span class="text-emerald-400 font-mono">LAN Worlds Visible: <strong>${responders}</strong></span>`
+        : `<span class="text-slate-400 font-mono">No active LAN world responders</span>`;
+
+      strip.innerHTML = `
+        <div class="flex flex-wrap items-center gap-1.5">
+          ${overallPill}
+          ${checksHtml}
+        </div>
+        <div class="flex items-center gap-3">
+          ${responderText}
+        </div>
+      `;
     }
 
     function renderInstances() {
@@ -1017,6 +1092,41 @@
         );
       } catch (err) {
         showToast(escapeHtml(err.message), 'error');
+      }
+    }
+
+    async function runSelfHeal() {
+      const btn = document.getElementById('self-heal-btn');
+      const origHtml = btn ? btn.innerHTML : '';
+      try {
+        if (btn) {
+          btn.disabled = true;
+          btn.innerHTML = `<span class="w-3 h-3 rounded-full border-2 border-emerald-400 border-t-transparent animate-spin"></span> Healing &amp; Testing...`;
+        }
+        showToast('Running full self-test (VC++ DLLs, BDS Binary, Firewall, UDP 7551 NetherNet &amp; UDP 19132 RakNet)...', 'info');
+        const res = await fetch('/api/diagnostics/heal', { method: 'POST' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Self-heal check failed');
+        state.diagnostics = data;
+        renderDiagnostics();
+        const names = (data.nethernet_responders || []).map(r => r.server_name).join(', ') || 'None';
+        const heals = (data.heals_performed || []);
+        const healMsg = heals.length > 0
+          ? `<br/><span class="text-amber-300 font-mono text-[11px]">Auto-Corrected: ${escapeHtml(heals.join(' | '))}</span>`
+          : '';
+        showToast(
+          `<strong>Self-Test ${data.ok ? 'PASSED' : 'COMPLETED'}</strong><br/>` +
+          `<span class="font-mono text-[11px]">Verified LAN Broadcast Worlds: ${escapeHtml(names)}</span>` +
+          healMsg,
+          data.ok ? 'success' : 'warn'
+        );
+      } catch (err) {
+        showToast(escapeHtml(err.message), 'error');
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = origHtml;
+        }
       }
     }
 

@@ -430,72 +430,95 @@ class RakNetLANBroadcaster:
         self.last_ping_from: str | None = None
         self.lan_ip: str = get_local_lan_ip()
 
+    async def ensure_sockets_bound(self) -> None:
+        """Bind or re-bind UDP 19132 (RakNet) and UDP 7551 (NetherNet) if not currently bound."""
+        loop = asyncio.get_running_loop()
+
+        if not self.bound_ok or self.transport is None:
+            try:
+                sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+                if hasattr(socket, "SIO_UDP_CONNRESET"):
+                    try:
+                        sock.ioctl(socket.SIO_UDP_CONNRESET, False)  # type: ignore[attr-defined]
+                    except Exception:
+                        pass
+                sock.setblocking(False)
+                sock.bind((self.bind_host, self.bind_port))
+
+                transport, _ = await loop.create_datagram_endpoint(
+                    lambda: _MainProxyProtocol(self),
+                    sock=sock,
+                )
+                self.transport = transport  # type: ignore[assignment]
+                self.bound_ok = True
+                self.bind_error = None
+                logger.info("RakNet LAN Broadcaster bound to UDP %s:%d", self.bind_host, self.bind_port)
+            except Exception as exc:
+                self.bound_ok = False
+                self.bind_error = str(exc)
+                logger.error("Failed to bind UDP %s:%d: %s", self.bind_host, self.bind_port, exc)
+
+        if not self.nethernet_bound_ok or self.nethernet_transport is None:
+            # Try dual-stack IPv6+IPv4 with SO_EXCLUSIVEADDRUSE first (so BDS instances bind ephemeral ports),
+            # then fall back to SO_REUSEADDR or AF_INET if another process (e.g. Minecraft client) shares 7551.
+            for mode in ("ipv6_exclusive", "ipv6_reuse", "ipv4_reuse"):
+                try:
+                    if mode.startswith("ipv6"):
+                        nn_sock = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
+                        nn_sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
+                        bind_addr: tuple[Any, ...] = ("::", self.nethernet_bind_port)
+                    else:
+                        nn_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                        bind_addr = (self.bind_host, self.nethernet_bind_port)
+
+                    if mode == "ipv6_exclusive" and hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
+                        nn_sock.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+                    else:
+                        nn_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+
+                    nn_sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+                    if hasattr(socket, "SIO_UDP_CONNRESET"):
+                        try:
+                            nn_sock.ioctl(socket.SIO_UDP_CONNRESET, False)  # type: ignore[attr-defined]
+                        except Exception:
+                            pass
+                    nn_sock.setblocking(False)
+                    nn_sock.bind(bind_addr)
+
+                    nn_transport, _ = await loop.create_datagram_endpoint(
+                        lambda: _NetherNetProxyProtocol(self),
+                        sock=nn_sock,
+                    )
+                    self.nethernet_transport = nn_transport  # type: ignore[assignment]
+                    self.nethernet_bound_ok = True
+                    logger.info(
+                        "NetherNet LAN Proxy bound to UDP %s:%d (mode=%s)",
+                        bind_addr[0],
+                        self.nethernet_bind_port,
+                        mode,
+                    )
+                    break
+                except Exception as exc:
+                    self.nethernet_bound_ok = False
+                    logger.debug("NetherNet bind attempt (%s) on :%d failed: %s", mode, self.nethernet_bind_port, exc)
+
+        if self.probe_transport is None:
+            try:
+                probe_transport, _ = await loop.create_datagram_endpoint(
+                    lambda: _ProbeProtocol(self),
+                    local_addr=("127.0.0.1", 0),
+                )
+                self.probe_transport = probe_transport  # type: ignore[assignment]
+            except Exception as exc:
+                logger.debug("Failed to create internal probe socket: %s", exc)
+
     async def start(self) -> None:
         """Bind UDP port 19132 (RakNet) and UDP port 7551 (NetherNet) and start housekeeping."""
-        loop = asyncio.get_running_loop()
-        try:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-            # Suppress Windows UDP WinError 10054 (WSAECONNRESET) on ICMP unreachable
-            if hasattr(socket, "SIO_UDP_CONNRESET"):
-                try:
-                    sock.ioctl(socket.SIO_UDP_CONNRESET, False)  # type: ignore[attr-defined]
-                except Exception:
-                    pass
-            sock.setblocking(False)
-            sock.bind((self.bind_host, self.bind_port))
-
-            transport, _ = await loop.create_datagram_endpoint(
-                lambda: _MainProxyProtocol(self),
-                sock=sock,
-            )
-            self.transport = transport  # type: ignore[assignment]
-            self.bound_ok = True
-            self.bind_error = None
-            logger.info("RakNet LAN Broadcaster bound to UDP %s:%d", self.bind_host, self.bind_port)
-        except Exception as exc:
-            self.bound_ok = False
-            self.bind_error = str(exc)
-            logger.error("Failed to bind UDP %s:%d: %s", self.bind_host, self.bind_port, exc)
-
-        # Bind UDP 7551 (dual-stack IPv6+IPv4 with SO_EXCLUSIVEADDRUSE so BDS instances
-        # cleanly bind ephemeral NetherNet ports and let the proxy route UDP 7551)
-        try:
-            nn_sock = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
-            nn_sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
-            if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
-                nn_sock.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
-            nn_sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-            if hasattr(socket, "SIO_UDP_CONNRESET"):
-                try:
-                    nn_sock.ioctl(socket.SIO_UDP_CONNRESET, False)  # type: ignore[attr-defined]
-                except Exception:
-                    pass
-            nn_sock.setblocking(False)
-            nn_sock.bind(("::", self.nethernet_bind_port))
-
-            nn_transport, _ = await loop.create_datagram_endpoint(
-                lambda: _NetherNetProxyProtocol(self),
-                sock=nn_sock,
-            )
-            self.nethernet_transport = nn_transport  # type: ignore[assignment]
-            self.nethernet_bound_ok = True
-            logger.info("NetherNet LAN Proxy bound to dual-stack UDP [::]:%d", self.nethernet_bind_port)
-        except Exception as exc:
-            self.nethernet_bound_ok = False
-            logger.warning("Failed to bind NetherNet UDP [::]:%d: %s", self.nethernet_bind_port, exc)
-
-        try:
-            probe_transport, _ = await loop.create_datagram_endpoint(
-                lambda: _ProbeProtocol(self),
-                local_addr=("127.0.0.1", 0),
-            )
-            self.probe_transport = probe_transport  # type: ignore[assignment]
-        except Exception as exc:
-            logger.debug("Failed to create internal probe socket: %s", exc)
-
-        self._housekeeping_task = asyncio.create_task(self._housekeeping_loop())
+        await self.ensure_sockets_bound()
+        if self._housekeeping_task is None:
+            self._housekeeping_task = asyncio.create_task(self._housekeeping_loop())
 
     async def stop(self) -> None:
         """Close all proxy sockets and stop background tasks."""

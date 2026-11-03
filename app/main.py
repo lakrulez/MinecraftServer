@@ -19,6 +19,7 @@ from fastapi.staticfiles import StaticFiles
 import psutil
 from pydantic import BaseModel, Field
 
+from app.bootstrap import SelfHealingCoordinator, run_startup_bootstrap
 from app.broadcaster import (
     ID_UNCONNECTED_PING,
     RAKNET_MAGIC,
@@ -118,6 +119,8 @@ broadcaster = RakNetLANBroadcaster(
     event_callback=lambda inst_id, msg: manager.append_log_sync(inst_id, msg),
 )
 
+healer = SelfHealingCoordinator(manager=manager, broadcaster=broadcaster)
+
 
 def _sync_broadcaster_target_metadata() -> None:
     """Keep the broadcaster's online instances and primary target in sync with the manager."""
@@ -171,6 +174,7 @@ async def _broadcast_telemetry_snapshot() -> None:
             "type": "telemetry",
             "instances": manager.list_instances(),
             "broadcaster": broadcaster.get_status(),
+            "diagnostics": healer.last_report,
             "host": _get_host_metrics(),
         }
     )
@@ -185,18 +189,46 @@ async def _telemetry_loop() -> None:
             logger.debug("Telemetry broadcast error: %s", exc)
 
 
+async def _self_heal_loop() -> None:
+    """Continuously run self-diagnostics and auto-heal LAN broadcasting every 8 seconds."""
+    await asyncio.sleep(3.0)
+    while True:
+        try:
+            await healer.run_check_and_heal(force_deep=False)
+            await _broadcast_telemetry_snapshot()
+        except Exception as exc:
+            logger.debug("Self-heal watchdog error: %s", exc)
+        await asyncio.sleep(8.0)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Restore broadcaster configuration from SQLite
+    # 1. Auto-provision VC++ Runtime DLLs, Mojang BDS binary, world stubs & Firewall rules
+    await asyncio.to_thread(run_startup_bootstrap, False)
+
+    # 2. Restore broadcaster configuration and bind UDP 19132 + UDP 7551 BEFORE starting BDS instances
     enabled_setting = manager.get_setting("broadcaster_enabled", "true").lower() == "true"
     broadcaster.enabled = enabled_setting
     _sync_broadcaster_target_metadata()
     await broadcaster.start()
 
+    # 3. Auto-start the primary server instance on startup if broadcaster is enabled and none are online
+    instances = manager.list_instances()
+    if broadcaster.enabled and instances and not any(i.get("status") == "online" for i in instances):
+        target_id = broadcaster.target.id if broadcaster.target else instances[0]["id"]
+        try:
+            logger.info("Auto-starting primary instance '%s' on startup...", target_id)
+            await manager.start_instance(target_id)
+            _sync_broadcaster_target_metadata()
+        except Exception as exc:
+            logger.warning("Failed to auto-start primary instance %s: %s", target_id, exc)
+
     telemetry_task = asyncio.create_task(_telemetry_loop())
+    heal_task = asyncio.create_task(_self_heal_loop())
     try:
         yield
     finally:
+        heal_task.cancel()
         telemetry_task.cancel()
         await broadcaster.stop()
         await manager.stop_all()
@@ -226,9 +258,22 @@ async def get_full_state() -> dict[str, Any]:
     return {
         "instances": manager.list_instances(),
         "broadcaster": broadcaster.get_status(),
+        "diagnostics": healer.last_report,
         "backups": manager.list_backups(),
         "host": _get_host_metrics(),
     }
+
+
+@app.get("/api/diagnostics")
+async def api_get_diagnostics() -> dict[str, Any]:
+    return healer.last_report
+
+
+@app.post("/api/diagnostics/heal")
+async def api_run_diagnostics_and_heal() -> dict[str, Any]:
+    report = await healer.run_check_and_heal(force_deep=True)
+    await _broadcast_telemetry_snapshot()
+    return report
 
 
 # -----------------------------------------------------------------------------
@@ -549,6 +594,7 @@ async def websocket_endpoint(ws: WebSocket) -> None:
                 "type": "init",
                 "instances": instances,
                 "broadcaster": broadcaster.get_status(),
+                "diagnostics": healer.last_report,
                 "backups": manager.list_backups(),
                 "host": _get_host_metrics(),
                 "logs": logs_by_instance,

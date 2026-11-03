@@ -36,6 +36,13 @@ from typing import Any, Awaitable, Callable
 import psutil
 
 from app.bds_runtime import ensure_world_files
+from app.bootstrap import (
+    clean_simulator_world_stubs,
+    discover_pid_nethernet_port,
+    ensure_bds_binary,
+    ensure_vc_redist,
+    sync_vc_dlls_to_directory,
+)
 
 logger = logging.getLogger("bedrock.manager")
 
@@ -262,12 +269,9 @@ class InstanceManager:
             if not jf.exists():
                 jf.write_text("[]", encoding="utf-8")
 
-        if not self.has_official_bds():
-            ensure_world_files(inst_dir, instance["world_name"], instance.get("seed", ""))
-        else:
-            w_dir = inst_dir / "worlds" / instance["world_name"]
-            w_dir.mkdir(parents=True, exist_ok=True)
-            (w_dir / "levelname.txt").write_text(instance["world_name"], encoding="utf-8")
+        w_dir = inst_dir / "worlds" / instance["world_name"]
+        w_dir.mkdir(parents=True, exist_ok=True)
+        (w_dir / "levelname.txt").write_text(instance["world_name"], encoding="utf-8")
         return props_path
 
     def create_instance(
@@ -451,10 +455,16 @@ class InstanceManager:
                         rt.memory_mb = mem_mb
                         for conn in rt.ps_proc.net_connections(kind="udp"):
                             if conn.laddr and conn.laddr.port:
-                                nethernet_udp_port = int(conn.laddr.port)
-                                break
+                                p = int(conn.laddr.port)
+                                if str(conn.laddr.ip) in ("::", "0.0.0.0", ""):
+                                    nethernet_udp_port = p
+                                    break
+                                if nethernet_udp_port is None:
+                                    nethernet_udp_port = p
                 except (psutil.NoSuchProcess, psutil.AccessDenied):
                     pass
+            if nethernet_udp_port is None and pid is not None:
+                nethernet_udp_port = discover_pid_nethernet_port(int(pid))
         else:
             if rt.status != "offline":
                 rt.status = "offline"
@@ -549,7 +559,13 @@ class InstanceManager:
         local_exe = inst_dir / exe_name
         shared_exe = BDS_BIN_DIR / exe_name
 
+        if not shared_exe.exists() and not local_exe.exists():
+            ensure_vc_redist(auto_install=True)
+            ensure_bds_binary(auto_download=True)
+
         if shared_exe.exists() or local_exe.exists():
+            sync_vc_dlls_to_directory(BDS_BIN_DIR)
+            sync_vc_dlls_to_directory(inst_dir)
             if not local_exe.exists() and shared_exe.exists():
                 try:
                     os.link(shared_exe, local_exe)
@@ -581,15 +597,8 @@ class InstanceManager:
                     except Exception:
                         pass
 
-            # Remove any synthetic simulator LevelDB stub so official BDS creates a clean LevelDB
-            worlds_root = inst_dir / "worlds"
-            if worlds_root.exists():
-                for manifest in worlds_root.rglob("MANIFEST-000001"):
-                    try:
-                        if manifest.read_bytes()[:24] == b"BDS-LEVELDB-MANIFEST-V1:":
-                            shutil.rmtree(manifest.parent, ignore_errors=True)
-                    except Exception:
-                        pass
+            # Remove any synthetic simulator LevelDB or JSON level.dat stub so official BDS creates a clean LevelDB
+            clean_simulator_world_stubs()
 
             return [str(local_exe)], "Official BDS Binary"
 
@@ -671,6 +680,7 @@ class InstanceManager:
         try:
             code = await proc.wait()
             rt = self.get_runtime(instance_id)
+            was_stopping = rt.status == "stopping"
             if rt.process is proc:
                 rt.status = "offline"
                 rt.started_at = None
@@ -682,6 +692,16 @@ class InstanceManager:
                 instance_id,
                 f"\x1b[90m[SUPERVISOR] Process exited with return code {code}.\x1b[0m",
             )
+            # 0xC0000135 (3221225781 / -1073741515) = STATUS_DLL_NOT_FOUND (missing Visual C++ runtime DLLs)
+            if not was_stopping and code in (3221225781, -1073741515):
+                await self._append_log(
+                    instance_id,
+                    "\x1b[33m[AUTO-HEAL]\x1b[0m Detected missing Visual C++ Runtime DLL (0xC0000135). "
+                    "Auto-installing VC++ Runtime & restarting instance...",
+                )
+                await asyncio.to_thread(ensure_vc_redist, True)
+                await asyncio.to_thread(sync_vc_dlls_to_directory, self.instance_dir(instance_id))
+                asyncio.create_task(self.start_instance(instance_id))
             if self.state_change_callback:
                 await self.state_change_callback()
         except asyncio.CancelledError:
