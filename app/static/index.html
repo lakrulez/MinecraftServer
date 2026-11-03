@@ -1,0 +1,1257 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BedrockNexus — Minecraft Bedrock Multi-Server Manager & LAN Proxy</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            slate: {
+              850: '#151f32',
+              925: '#0b1120',
+              950: '#060a14'
+            }
+          },
+          fontFamily: {
+            mono: ['"JetBrains Mono"', '"Fira Code"', 'Consolas', 'monospace'],
+            sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif']
+          }
+        }
+      }
+    };
+  </script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+    body {
+      background-color: #060a14;
+      color: #e2e8f0;
+      font-family: 'Inter', system-ui, sans-serif;
+    }
+    .terminal-scroll::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    .terminal-scroll::-webkit-scrollbar-track {
+      background: #090d16;
+    }
+    .terminal-scroll::-webkit-scrollbar-thumb {
+      background: #1e293b;
+      border-radius: 4px;
+    }
+    .terminal-scroll::-webkit-scrollbar-thumb:hover {
+      background: #334155;
+    }
+    .ansi-black { color: #64748b; }
+    .ansi-red { color: #f87171; }
+    .ansi-green { color: #4ade80; }
+    .ansi-yellow { color: #facc15; }
+    .ansi-blue { color: #60a5fa; }
+    .ansi-magenta { color: #c084fc; }
+    .ansi-cyan { color: #22d3ee; }
+    .ansi-white { color: #f1f5f9; }
+    .ansi-bright-black { color: #94a3b8; }
+    .ansi-bright-red { color: #fca5a5; }
+    .ansi-bright-green { color: #86efac; }
+    .ansi-bright-yellow { color: #fde047; }
+    .ansi-bright-blue { color: #93c5fd; }
+    .ansi-bright-magenta { color: #d8b4fe; }
+    .ansi-bright-cyan { color: #67e8f9; }
+    .ansi-bright-white { color: #ffffff; }
+    .ansi-bold { font-weight: 600; }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col selection:bg-emerald-500/30 selection:text-emerald-200">
+
+  <!-- Top Header -->
+  <header class="sticky top-0 z-30 border-b border-slate-800/80 bg-slate-950/90 backdrop-blur-md">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-4">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-700 flex items-center justify-center shadow-lg shadow-emerald-950/50 border border-emerald-400/30">
+          <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
+          </svg>
+        </div>
+        <div>
+          <div class="flex items-center gap-2.5">
+            <h1 class="text-lg font-bold tracking-tight text-white">BedrockNexus</h1>
+            <span class="text-[11px] font-mono uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+              RakNet UDP :19132 Proxy
+            </span>
+          </div>
+          <p class="text-xs text-slate-400">Self-Hosted Minecraft Bedrock Multi-Server Supervisor &amp; Console LAN Discovery Bridge</p>
+        </div>
+      </div>
+
+      <!-- Host Telemetry & Primary CTA -->
+      <div class="flex items-center gap-4">
+        <div class="hidden md:flex items-center gap-4 px-3.5 py-1.5 rounded-lg bg-slate-900/90 border border-slate-800 text-xs">
+          <div class="flex items-center gap-2">
+            <span class="text-slate-400">Host CPU</span>
+            <span id="host-cpu" class="font-mono font-semibold text-sky-400">0.0%</span>
+          </div>
+          <div class="h-3 w-px bg-slate-800"></div>
+          <div class="flex items-center gap-2">
+            <span class="text-slate-400">Host RAM</span>
+            <span id="host-ram" class="font-mono font-semibold text-indigo-400">0.0 / 0.0 GB</span>
+          </div>
+          <div class="h-3 w-px bg-slate-800"></div>
+          <div class="flex items-center gap-1.5">
+            <span id="ws-dot" class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span id="ws-status" class="font-mono text-[11px] text-emerald-400">LIVE WS</span>
+          </div>
+        </div>
+
+        <button onclick="openCreateModal()" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-semibold text-sm shadow-lg shadow-emerald-950/60 transition cursor-pointer">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M12 4v16m8-8H4"/>
+          </svg>
+          New Server Instance
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Toast Notification Container -->
+  <div id="toast-container" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 max-w-md"></div>
+
+  <!-- Main Content -->
+  <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-6 space-y-6">
+
+    <!-- 1. LAN Discovery & Console Switch Bridge Card -->
+    <section class="rounded-2xl bg-gradient-to-br from-slate-900/95 via-slate-900/90 to-slate-950 border border-slate-800/90 shadow-xl overflow-hidden">
+      <div class="p-5 sm:p-6">
+        <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5">
+          <!-- Left: Title & Live Beacon Status -->
+          <div class="space-y-2 max-w-2xl">
+            <div class="flex flex-wrap items-center gap-2.5">
+              <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border" id="beacon-badge">
+                <span class="w-2 h-2 rounded-full" id="beacon-dot"></span>
+                <span id="beacon-text">INITIALIZING...</span>
+              </span>
+              <span class="text-xs font-mono px-2.5 py-1 rounded-md bg-slate-800/80 text-slate-300 border border-slate-700/70">
+                Switch / PS / Xbox Auto-Discovery
+              </span>
+              <span id="lan-endpoint-pill" class="text-xs font-mono px-2.5 py-1 rounded-md bg-sky-500/10 text-sky-300 border border-sky-500/20">
+                LAN UDP 0.0.0.0:19132
+              </span>
+            </div>
+            <h2 class="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+              Embedded RakNet LAN Discovery &amp; Switch Bridge
+            </h2>
+            <p class="text-xs sm:text-sm text-slate-400 leading-relaxed">
+              Listens on UDP <code class="text-emerald-400 font-mono">19132</code> for console <code class="text-slate-300 font-mono">ID_UNCONNECTED_PING (0x01)</code> broadcasts, replies with <code class="text-slate-300 font-mono">ID_UNCONNECTED_PONG (0x1c)</code>, and transparently proxies player sessions to the selected internal BDS port.
+            </p>
+          </div>
+
+          <!-- Right: Controls (Toggle + Active Instance Dropdown + Ping Test) -->
+          <div class="flex flex-wrap sm:flex-nowrap items-center gap-4 bg-slate-950/80 p-4 rounded-xl border border-slate-800/80">
+            <!-- Toggle Switch -->
+            <div class="flex items-center gap-3 pr-3 sm:border-r border-slate-800">
+              <button
+                id="broadcaster-toggle-btn"
+                onclick="toggleBroadcaster()"
+                type="button"
+                role="switch"
+                aria-checked="true"
+                class="relative inline-flex h-7 w-13 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none bg-emerald-600"
+                style="width: 52px;"
+              >
+                <span
+                  id="broadcaster-toggle-knob"
+                  class="pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out translate-x-6"
+                ></span>
+              </button>
+              <div>
+                <div class="text-xs font-semibold text-white">LAN Beacon</div>
+                <div id="broadcaster-toggle-label" class="text-[11px] text-emerald-400 font-mono">Enabled</div>
+              </div>
+            </div>
+
+            <!-- Target Instance Selector Dropdown -->
+            <div class="flex-1 min-w-[210px]">
+              <label for="broadcaster-select" class="block text-[11px] font-medium uppercase tracking-wider text-slate-400 mb-1">
+                Active Broadcast Target (Hot-Switch)
+              </label>
+              <select
+                id="broadcaster-select"
+                onchange="changeBroadcastTarget(this.value)"
+                class="w-full rounded-lg bg-slate-900 border border-slate-700 text-sm text-white px-3 py-1.5 focus:outline-none focus:border-emerald-500 font-medium"
+              >
+                <option value="">No Instance Selected</option>
+              </select>
+            </div>
+
+            <!-- Diagnostic Ping Button -->
+            <button
+              onclick="testRakNetPing()"
+              title="Send a live UDP 0x01 Unconnected Ping to 127.0.0.1:19132 and inspect the 0x1c Pong"
+              class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-mono font-medium transition flex items-center gap-1.5 shrink-0 cursor-pointer"
+            >
+              <svg class="w-3.5 h-3.5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+              </svg>
+              Verify 0x1c Pong
+            </button>
+          </div>
+        </div>
+
+        <!-- Bottom Telemetry Bar inside Broadcaster Card -->
+        <div class="mt-5 pt-4 border-t border-slate-800/80 grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-3 text-xs">
+          <div class="bg-slate-950/60 rounded-lg px-3 py-2 border border-slate-800/60">
+            <div class="text-slate-400 text-[11px]">UDP Proxy Route</div>
+            <div id="proxy-route-display" class="font-mono font-semibold text-emerald-400 mt-0.5 truncate">:19132 ➔ —</div>
+          </div>
+          <div class="bg-slate-950/60 rounded-lg px-3 py-2 border border-slate-800/60">
+            <div class="text-slate-400 text-[11px]">Pings (0x01) / Pongs (0x1c)</div>
+            <div id="proxy-pings-display" class="font-mono font-semibold text-sky-400 mt-0.5">0 / 0</div>
+          </div>
+          <div class="bg-slate-950/60 rounded-lg px-3 py-2 border border-slate-800/60">
+            <div class="text-slate-400 text-[11px]">Active Console Sessions</div>
+            <div id="proxy-sessions-display" class="font-mono font-semibold text-purple-400 mt-0.5">0 clients</div>
+          </div>
+          <div class="bg-slate-950/60 rounded-lg px-3 py-2 border border-slate-800/60">
+            <div class="text-slate-400 text-[11px]">Packets Routed (C➔S / S➔C)</div>
+            <div id="proxy-packets-display" class="font-mono font-semibold text-amber-400 mt-0.5">0 / 0</div>
+          </div>
+          <div class="col-span-2 sm:col-span-4 lg:col-span-1 bg-slate-950/60 rounded-lg px-3 py-2 border border-slate-800/60">
+            <div class="text-slate-400 text-[11px]">Live Bedrock MOTD Payload</div>
+            <div id="proxy-motd-display" class="font-mono text-[11px] text-slate-300 mt-0.5 truncate" title="">—</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. Server Instances Grid -->
+    <section class="space-y-3">
+      <div class="flex items-center justify-between">
+        <div>
+          <h2 class="text-base font-bold text-white flex items-center gap-2">
+            Managed Bedrock Server Instances
+            <span id="instances-count-badge" class="text-xs font-mono px-2 py-0.5 rounded-md bg-slate-800 text-slate-300">0</span>
+          </h2>
+          <p class="text-xs text-slate-400">Each instance runs on an isolated internal UDP port with dedicated <code class="font-mono text-slate-300">server.properties</code> and world storage.</p>
+        </div>
+      </div>
+
+      <div id="instances-grid" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        <!-- Populated dynamically via JS -->
+      </div>
+    </section>
+
+    <!-- 3. Bottom Split Workspace: Real-Time Terminal (Left 7 cols) & World/Backup Manager (Right 5 cols) -->
+    <section class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+
+      <!-- Real-Time ANSI Console & Interactive STDIN Command Bar -->
+      <div class="lg:col-span-7 rounded-2xl bg-slate-900/95 border border-slate-800 shadow-xl overflow-hidden flex flex-col">
+        <!-- Console Header & Instance Tabs -->
+        <div class="px-4 py-3 bg-slate-950 border-b border-slate-800 flex flex-wrap items-center justify-between gap-2">
+          <div class="flex items-center gap-2">
+            <div class="flex items-center gap-1.5 mr-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-rose-500/80"></span>
+              <span class="w-2.5 h-2.5 rounded-full bg-amber-500/80"></span>
+              <span class="w-2.5 h-2.5 rounded-full bg-emerald-500/80"></span>
+            </div>
+            <span class="text-xs font-mono font-semibold text-slate-200 uppercase tracking-wider">Live BDS Terminal</span>
+            <span id="console-active-badge" class="text-[11px] font-mono px-2 py-0.5 rounded bg-slate-800 text-emerald-400 border border-slate-700">
+              Select Instance
+            </span>
+          </div>
+
+          <!-- Instance Switcher Pills for Console -->
+          <div id="console-tabs" class="flex flex-wrap items-center gap-1.5"></div>
+        </div>
+
+        <!-- Quick Command Presets Bar -->
+        <div class="px-4 py-2 bg-slate-900/90 border-b border-slate-800/80 flex items-center gap-1.5 overflow-x-auto text-[11px] font-mono">
+          <span class="text-slate-400 shrink-0 mr-1">Quick STDIN:</span>
+          <button onclick="prefillOrSendCommand('list', true)" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 shrink-0 cursor-pointer">list</button>
+          <button onclick="prefillOrSendCommand('time set day', true)" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 shrink-0 cursor-pointer">time set day</button>
+          <button onclick="prefillOrSendCommand('time set night', true)" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-indigo-300 border border-slate-700 shrink-0 cursor-pointer">time set night</button>
+          <button onclick="prefillOrSendCommand('gamemode creative @a', true)" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-slate-700 shrink-0 cursor-pointer">gamemode creative</button>
+          <button onclick="prefillOrSendCommand('gamemode survival @a', true)" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-sky-300 border border-slate-700 shrink-0 cursor-pointer">gamemode survival</button>
+          <button onclick="prefillOrSendCommand('op ', false)" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-purple-300 border border-slate-700 shrink-0 cursor-pointer">op &lt;player&gt;</button>
+          <button onclick="prefillOrSendCommand('deop ', false)" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-rose-300 border border-slate-700 shrink-0 cursor-pointer">deop &lt;player&gt;</button>
+          <button onclick="prefillOrSendCommand('whitelist add ', false)" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-teal-300 border border-slate-700 shrink-0 cursor-pointer">whitelist add</button>
+          <button onclick="prefillOrSendCommand('say Hello from BedrockNexus Console!', true)" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-pink-300 border border-slate-700 shrink-0 cursor-pointer">say Broadcast</button>
+        </div>
+
+        <!-- Terminal Output Stream -->
+        <div
+          id="terminal-output"
+          class="terminal-scroll h-[370px] overflow-y-auto p-4 bg-[#070b12] font-mono text-xs leading-relaxed space-y-1 select-text"
+        ></div>
+
+        <!-- Interactive STDIN Command Input Bar -->
+        <form onsubmit="submitConsoleCommand(event)" class="p-3 bg-slate-950 border-t border-slate-800 flex items-center gap-2">
+          <span class="text-emerald-400 font-mono font-bold text-sm pl-1">&gt;</span>
+          <input
+            id="console-input"
+            type="text"
+             autocomplete="off"
+            placeholder="Type a BDS console command (op, deop, whitelist, time set day, gamemode, say, stop)..."
+            class="flex-1 bg-slate-900 border border-slate-700/90 rounded-lg px-3 py-2 text-xs font-mono text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+          />
+          <button
+            type="submit"
+            class="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs transition shrink-0 cursor-pointer"
+          >
+            Send STDIN
+          </button>
+        </form>
+      </div>
+
+      <!-- World & Backup Automation Panel -->
+      <div class="lg:col-span-5 rounded-2xl bg-slate-900/95 border border-slate-800 shadow-xl overflow-hidden flex flex-col">
+        <div class="px-5 py-3.5 bg-slate-950 border-b border-slate-800 flex items-center justify-between">
+          <div>
+            <h3 class="text-sm font-bold text-white">World &amp; Backup Automation</h3>
+            <p class="text-[11px] text-slate-400">Safe hot backups (<code class="font-mono text-emerald-400">save hold ➔ query ➔ zip ➔ resume</code>) &amp; <code class="font-mono text-sky-400">.mcworld</code> imports</p>
+          </div>
+          <button
+            onclick="triggerInstanceBackup()"
+            id="backup-now-btn"
+            class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold transition shadow cursor-pointer"
+          >
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"/>
+            </svg>
+            Backup Active Instance
+          </button>
+        </div>
+
+        <div class="p-4 space-y-4">
+          <!-- World Import (.mcworld / .zip) Box -->
+          <div class="rounded-xl bg-slate-950/70 border border-slate-800 p-3.5">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-xs font-semibold text-slate-200">Import World Archive (<code class="font-mono text-sky-400">.mcworld</code> or <code class="font-mono text-sky-400">.zip</code>)</span>
+              <span id="import-target-label" class="text-[11px] font-mono text-emerald-400">Target: —</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <input
+                id="world-import-file"
+                type="file"
+                accept=".mcworld,.zip"
+                class="block w-full text-xs text-slate-400 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-slate-800 file:text-slate-200 hover:file:bg-slate-700 cursor-pointer"
+              />
+              <button
+                onclick="uploadWorldArchive()"
+                class="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold transition shrink-0 cursor-pointer"
+              >
+                Import World
+              </button>
+            </div>
+          </div>
+
+          <!-- Backups List -->
+          <div>
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Saved Snapshots in /backups</span>
+              <span id="backups-count" class="text-[11px] font-mono text-slate-400">0 archives</span>
+            </div>
+            <div id="backups-list" class="space-y-2 max-h-[300px] overflow-y-auto terminal-scroll pr-1">
+              <!-- Populated dynamically -->
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </section>
+  </main>
+
+  <!-- Creation Wizard Modal -->
+  <div id="create-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/75 backdrop-blur-sm p-4">
+    <div class="w-full max-w-lg rounded-2xl bg-slate-900 border border-slate-700 shadow-2xl overflow-hidden">
+      <div class="px-6 py-4 bg-slate-950 border-b border-slate-800 flex items-center justify-between">
+        <div>
+          <h3 class="text-base font-bold text-white">Create New Bedrock Server Instance</h3>
+          <p class="text-xs text-slate-400">Allocates a unique UDP port and generates <code class="font-mono text-emerald-400">server.properties</code></p>
+        </div>
+        <button onclick="closeCreateModal()" class="text-slate-400 hover:text-white p-1 cursor-pointer">✕</button>
+      </div>
+
+      <form onsubmit="submitCreateInstance(event)" class="p-6 space-y-4">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div class="sm:col-span-2">
+            <label class="block text-xs font-semibold text-slate-300 mb-1">Server Display Name (MOTD)</label>
+            <input
+              id="wiz-display-name"
+              type="text"
+              required
+              placeholder="e.g. Switch Family Survival"
+              class="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500"
+            />
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1">World Folder Name</label>
+            <input
+              id="wiz-world-name"
+              type="text"
+              required
+              placeholder="e.g. SurvivalWorld"
+              value="BedrockWorld"
+              class="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500"
+            />
+          </div>
+
+          <div>
+            <div class="flex items-center justify-between mb-1">
+              <label class="block text-xs font-semibold text-slate-300">World Seed (Optional)</label>
+              <button type="button" onclick="randomizeSeed()" class="text-[11px] text-emerald-400 hover:underline cursor-pointer">Randomize</button>
+            </div>
+            <input
+              id="wiz-seed"
+              type="text"
+              placeholder="Leave blank for random"
+              class="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-sm font-mono text-white focus:outline-none focus:border-emerald-500"
+            />
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1">Game Mode</label>
+            <select
+              id="wiz-gamemode"
+              class="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500"
+            >
+              <option value="survival">Survival</option>
+              <option value="creative">Creative</option>
+              <option value="adventure">Adventure</option>
+              <option value="spectator">Spectator</option>
+            </select>
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1">Difficulty</label>
+            <select
+              id="wiz-difficulty"
+              class="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500"
+            >
+              <option value="normal" selected>Normal</option>
+              <option value="easy">Easy</option>
+              <option value="hard">Hard</option>
+              <option value="peaceful">Peaceful</option>
+            </select>
+          </div>
+
+          <div class="sm:col-span-2">
+            <label class="block text-xs font-semibold text-slate-300 mb-1">Max Players</label>
+            <input
+              id="wiz-max-players"
+              type="number"
+              min="1"
+              max="200"
+              value="10"
+              required
+              class="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-sm font-mono text-white focus:outline-none focus:border-emerald-500"
+            />
+          </div>
+        </div>
+
+        <div class="rounded-lg bg-slate-950/90 border border-slate-800 p-3 text-xs text-slate-400 flex items-center justify-between">
+          <span>Internal UDP Port Allocation</span>
+          <span class="font-mono text-emerald-400">Auto-Assigned (19133+)</span>
+        </div>
+
+        <div class="flex items-center justify-end gap-3 pt-2">
+          <button
+            type="button"
+            onclick="closeCreateModal()"
+            class="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold cursor-pointer"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            class="px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-lg cursor-pointer"
+          >
+            Create &amp; Write server.properties
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- server.properties Viewer Modal -->
+  <div id="props-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/75 backdrop-blur-sm p-4">
+    <div class="w-full max-w-2xl rounded-2xl bg-slate-900 border border-slate-700 shadow-2xl overflow-hidden">
+      <div class="px-6 py-4 bg-slate-950 border-b border-slate-800 flex items-center justify-between">
+        <div>
+          <h3 id="props-modal-title" class="text-base font-bold text-white">server.properties</h3>
+          <p class="text-xs text-slate-400">Managed Bedrock Dedicated Server configuration file</p>
+        </div>
+        <button onclick="closePropsModal()" class="text-slate-400 hover:text-white p-1 cursor-pointer">✕</button>
+      </div>
+      <div class="p-5">
+        <pre id="props-modal-content" class="terminal-scroll bg-slate-950 border border-slate-800 rounded-xl p-4 text-xs font-mono text-emerald-300 max-h-[420px] overflow-y-auto"></pre>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Application State
+    let state = {
+      instances: [],
+      broadcaster: {},
+      backups: [],
+      host: {},
+      selectedInstanceId: null,
+      logsByInstance: {},
+      commandHistory: [],
+      historyIndex: -1
+    };
+
+    let ws = null;
+
+    // ANSI Escape Sequence to HTML Converter
+    const ANSI_CLASS_MAP = {
+      '30': 'ansi-black',
+      '31': 'ansi-red',
+      '32': 'ansi-green',
+      '33': 'ansi-yellow',
+      '34': 'ansi-blue',
+      '35': 'ansi-magenta',
+      '36': 'ansi-cyan',
+      '37': 'ansi-white',
+      '90': 'ansi-bright-black',
+      '91': 'ansi-bright-red',
+      '92': 'ansi-bright-green',
+      '93': 'ansi-bright-yellow',
+      '94': 'ansi-bright-blue',
+      '95': 'ansi-bright-magenta',
+      '96': 'ansi-bright-cyan',
+      '97': 'ansi-bright-white',
+      '1': 'ansi-bold'
+    };
+
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    function ansiToHtml(rawLine) {
+      const escaped = escapeHtml(rawLine);
+      let openSpans = 0;
+      const html = escaped.replace(/\x1b\[([0-9;]*)m/g, (_, codesStr) => {
+        const codes = codesStr ? codesStr.split(';') : ['0'];
+        let result = '';
+        for (const c of codes) {
+          if (c === '0' || c === '') {
+            while (openSpans > 0) {
+              result += '</span>';
+              openSpans--;
+            }
+          } else if (ANSI_CLASS_MAP[c]) {
+            result += `<span class="${ANSI_CLASS_MAP[c]}">`;
+            openSpans++;
+          }
+        }
+        return result;
+      });
+      return html + '</span>'.repeat(openSpans);
+    }
+
+    function showToast(message, type = 'info') {
+      const container = document.getElementById('toast-container');
+      const colors = {
+        info: 'bg-slate-900 border-sky-500/50 text-sky-200',
+        success: 'bg-slate-900 border-emerald-500/50 text-emerald-200',
+        warn: 'bg-slate-900 border-amber-500/50 text-amber-200',
+        error: 'bg-slate-900 border-rose-500/50 text-rose-200'
+      };
+      const el = document.createElement('div');
+      el.className = `px-4 py-3 rounded-xl border shadow-2xl text-xs font-medium backdrop-blur-md transition-all duration-300 ${colors[type] || colors.info}`;
+      el.innerHTML = message;
+      container.appendChild(el);
+      setTimeout(() => {
+        el.style.opacity = '0';
+        setTimeout(() => el.remove(), 300);
+      }, 4200);
+    }
+
+    // WebSocket Connection
+    function connectWebSocket() {
+      const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      ws = new WebSocket(`${proto}//${location.host}/ws`);
+
+      ws.onopen = () => {
+        document.getElementById('ws-dot').className = 'w-2 h-2 rounded-full bg-emerald-400 animate-pulse';
+        document.getElementById('ws-status').textContent = 'LIVE WS';
+        document.getElementById('ws-status').className = 'font-mono text-[11px] text-emerald-400';
+      };
+
+      ws.onmessage = (event) => {
+        const msg = JSON.parse(event.data);
+        if (msg.type === 'init') {
+          state.instances = msg.instances || [];
+          state.broadcaster = msg.broadcaster || {};
+          state.backups = msg.backups || [];
+          state.host = msg.host || {};
+          state.logsByInstance = msg.logs || {};
+          if (!state.selectedInstanceId && state.instances.length > 0) {
+            state.selectedInstanceId = state.broadcaster.target_instance_id || state.instances[0].id;
+          }
+          renderAll();
+          renderTerminalFull();
+        } else if (msg.type === 'telemetry') {
+          state.instances = msg.instances || [];
+          state.broadcaster = msg.broadcaster || {};
+          state.host = msg.host || {};
+          if (!state.selectedInstanceId && state.instances.length > 0) {
+            state.selectedInstanceId = state.instances[0].id;
+          }
+          renderHostMetrics();
+          renderBroadcaster();
+          renderInstances();
+          renderConsoleTabs();
+        } else if (msg.type === 'console_line') {
+          const instId = msg.instance_id;
+          if (!state.logsByInstance[instId]) {
+            state.logsByInstance[instId] = [];
+          }
+          state.logsByInstance[instId].push(msg.entry);
+          if (state.logsByInstance[instId].length > 600) {
+            state.logsByInstance[instId].shift();
+          }
+          if (instId === state.selectedInstanceId) {
+            appendTerminalEntry(msg.entry);
+          }
+        } else if (msg.type === 'console_history') {
+          state.logsByInstance[msg.instance_id] = msg.logs || [];
+          if (msg.instance_id === state.selectedInstanceId) {
+            renderTerminalFull();
+          }
+        } else if (msg.type === 'error') {
+          showToast(escapeHtml(msg.message), 'error');
+        }
+      };
+
+      ws.onclose = () => {
+        document.getElementById('ws-dot').className = 'w-2 h-2 rounded-full bg-amber-400';
+        document.getElementById('ws-status').textContent = 'RECONNECTING';
+        document.getElementById('ws-status').className = 'font-mono text-[11px] text-amber-400';
+        setTimeout(connectWebSocket, 2000);
+      };
+    }
+
+    function renderAll() {
+      renderHostMetrics();
+      renderBroadcaster();
+      renderInstances();
+      renderConsoleTabs();
+      renderBackups();
+    }
+
+    function renderHostMetrics() {
+      if (!state.host) return;
+      document.getElementById('host-cpu').textContent = `${(state.host.cpu_percent ?? 0).toFixed(1)}%`;
+      document.getElementById('host-ram').textContent = `${state.host.ram_used_gb ?? 0} / ${state.host.ram_total_gb ?? 0} GB`;
+    }
+
+    function renderBroadcaster() {
+      const b = state.broadcaster || {};
+      const badge = document.getElementById('beacon-badge');
+      const dot = document.getElementById('beacon-dot');
+      const text = document.getElementById('beacon-text');
+
+      if (b.beacon_active) {
+        badge.className = 'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30';
+        dot.className = 'w-2 h-2 rounded-full bg-emerald-400 animate-ping';
+        text.textContent = `BEACON ACTIVE ON SUBNET (${b.lan_ip || '0.0.0.0'}:${b.bind_port || 19132})`;
+      } else {
+        badge.className = 'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/30';
+        dot.className = 'w-2 h-2 rounded-full bg-amber-400';
+        text.textContent = b.enabled ? 'STANDBY (NO TARGET)' : 'BROADCASTER DISABLED';
+      }
+
+      document.getElementById('lan-endpoint-pill').textContent = `LAN UDP ${b.lan_ip || '0.0.0.0'}:${b.bind_port || 19132}`;
+
+      // Toggle UI
+      const btn = document.getElementById('broadcaster-toggle-btn');
+      const knob = document.getElementById('broadcaster-toggle-knob');
+      const label = document.getElementById('broadcaster-toggle-label');
+      if (b.enabled) {
+        btn.className = 'relative inline-flex h-7 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out bg-emerald-600';
+        knob.className = 'pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow transition duration-200 ease-in-out translate-x-6';
+        label.textContent = 'Enabled';
+        label.className = 'text-[11px] text-emerald-400 font-mono';
+      } else {
+        btn.className = 'relative inline-flex h-7 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out bg-slate-700';
+        knob.className = 'pointer-events-none inline-block h-6 w-6 transform rounded-full bg-slate-300 shadow transition duration-200 ease-in-out translate-x-0';
+        label.textContent = 'Disabled';
+        label.className = 'text-[11px] text-slate-400 font-mono';
+      }
+
+      // Dropdown options
+      const select = document.getElementById('broadcaster-select');
+      const currentVal = b.target_instance_id || '';
+      const optionsHtml = [
+        '<option value="">— None —</option>',
+        ...state.instances.map(inst => {
+          const st = inst.status === 'online' ? '● ONLINE' : '○ OFFLINE';
+          const selected = inst.id === currentVal ? 'selected' : '';
+          return `<option value="${inst.id}" ${selected}>${escapeHtml(inst.display_name)} (UDP :${inst.port} • ${st})</option>`;
+        })
+      ].join('');
+      if (select.innerHTML !== optionsHtml) {
+        select.innerHTML = optionsHtml;
+      }
+      select.value = currentVal;
+
+      // Telemetry cells
+      document.getElementById('proxy-route-display').textContent = b.target_port
+        ? `0.0.0.0:${b.bind_port} ➔ 127.0.0.1:${b.target_port}`
+        : 'Unmapped';
+      document.getElementById('proxy-pings-display').textContent = `${b.pings_received ?? 0} / ${b.pongs_sent ?? 0}`;
+      document.getElementById('proxy-sessions-display').textContent = `${b.active_sessions ?? 0} active`;
+      document.getElementById('proxy-packets-display').textContent = `${b.packets_to_server ?? 0} / ${b.packets_to_client ?? 0}`;
+      const motdEl = document.getElementById('proxy-motd-display');
+      motdEl.textContent = b.motd_preview || '—';
+      motdEl.title = b.motd_preview || '';
+    }
+
+    function renderInstances() {
+      const grid = document.getElementById('instances-grid');
+      document.getElementById('instances-count-badge').textContent = state.instances.length;
+
+      if (state.instances.length === 0) {
+        grid.innerHTML = `
+          <div class="col-span-full rounded-2xl bg-slate-900/60 border border-dashed border-slate-800 p-10 text-center">
+            <p class="text-sm text-slate-400">No Bedrock instances created yet. Click <strong>New Server Instance</strong> above to launch your first world.</p>
+          </div>
+        `;
+        return;
+      }
+
+      const targetId = state.broadcaster?.target_instance_id;
+
+      grid.innerHTML = state.instances.map(inst => {
+        const isOnline = inst.status === 'online';
+        const isTarget = inst.id === targetId && state.broadcaster?.enabled;
+        const isSelectedConsole = inst.id === state.selectedInstanceId;
+
+        const statusBadge = isOnline
+          ? `<span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-mono font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+               <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>ONLINE
+             </span>`
+          : `<span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-mono font-semibold bg-slate-800 text-slate-400 border border-slate-700">
+               <span class="w-1.5 h-1.5 rounded-full bg-slate-500"></span>${escapeHtml(inst.status.toUpperCase())}
+             </span>`;
+
+        const lanBadge = isTarget
+          ? `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold bg-purple-500/20 text-purple-300 border border-purple-500/40">
+               ★ LAN :19132 ACTIVE
+             </span>`
+          : `<button onclick="changeBroadcastTarget('${inst.id}')" class="text-[11px] font-mono px-2 py-0.5 rounded bg-slate-800/90 hover:bg-purple-500/20 text-slate-400 hover:text-purple-300 border border-slate-700/80 transition cursor-pointer">
+               Map to LAN :19132
+             </button>`;
+
+        return `
+          <div class="rounded-2xl bg-slate-900/95 border ${isSelectedConsole ? 'border-emerald-500/60 ring-1 ring-emerald-500/20' : 'border-slate-800'} p-5 flex flex-col justify-between shadow-lg transition">
+            <div>
+              <!-- Card Top Row -->
+              <div class="flex items-start justify-between gap-2 mb-3">
+                <div>
+                  <div class="flex items-center gap-2 flex-wrap">
+                    <h3 class="text-base font-bold text-white">${escapeHtml(inst.display_name)}</h3>
+                    ${statusBadge}
+                  </div>
+                  <p class="text-xs text-slate-400 mt-0.5 font-mono">
+                    World: <span class="text-slate-200">${escapeHtml(inst.world_name)}</span>
+                    ${inst.seed ? ` • Seed: <span class="text-slate-300">${escapeHtml(inst.seed)}</span>` : ''}
+                  </p>
+                </div>
+                ${lanBadge}
+              </div>
+
+              <!-- Badges Row -->
+              <div class="flex flex-wrap items-center gap-1.5 mb-4 text-[11px] font-mono">
+                <span class="px-2 py-0.5 rounded bg-slate-950 text-sky-400 border border-slate-800">UDP :${inst.port}</span>
+                <span class="px-2 py-0.5 rounded bg-slate-950 text-slate-300 border border-slate-800 capitalize">${escapeHtml(inst.gamemode)}</span>
+                <span class="px-2 py-0.5 rounded bg-slate-950 text-slate-300 border border-slate-800 capitalize">${escapeHtml(inst.difficulty)}</span>
+                <span class="px-2 py-0.5 rounded bg-slate-950 text-slate-300 border border-slate-800">${inst.players_online}/${inst.max_players} Players</span>
+              </div>
+
+              <!-- Live Telemetry Metrics Grid -->
+              <div class="grid grid-cols-3 gap-2 p-2.5 rounded-xl bg-slate-950/80 border border-slate-800/80 text-xs mb-4">
+                <div>
+                  <div class="text-[10px] uppercase text-slate-400">Uptime</div>
+                  <div class="font-mono font-semibold ${isOnline ? 'text-emerald-400' : 'text-slate-500'} mt-0.5">${escapeHtml(inst.uptime_human)}</div>
+                </div>
+                <div>
+                  <div class="text-[10px] uppercase text-slate-400">CPU %</div>
+                  <div class="font-mono font-semibold text-sky-400 mt-0.5">${isOnline ? inst.cpu_percent.toFixed(1) + '%' : '0.0%'}</div>
+                </div>
+                <div>
+                  <div class="text-[10px] uppercase text-slate-400">Memory</div>
+                  <div class="font-mono font-semibold text-indigo-400 mt-0.5">${isOnline ? inst.memory_mb.toFixed(1) + ' MB' : '0.0 MB'}</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Action Controls -->
+            <div class="space-y-2 pt-2 border-t border-slate-800/80">
+              <div class="grid grid-cols-4 gap-1.5">
+                ${!isOnline ? `
+                  <button onclick="instanceAction('${inst.id}', 'start')" class="col-span-2 py-1.5 px-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs transition flex items-center justify-center gap-1 cursor-pointer">
+                    ▶ Start
+                  </button>
+                ` : `
+                  <button onclick="instanceAction('${inst.id}', 'stop')" class="py-1.5 px-2 rounded-lg bg-amber-600/90 hover:bg-amber-500 text-white font-semibold text-xs transition cursor-pointer" title="Graceful stop via STDIN">
+                    ■ Stop
+                  </button>
+                  <button onclick="instanceAction('${inst.id}', 'restart')" class="py-1.5 px-2 rounded-lg bg-sky-600/90 hover:bg-sky-500 text-white font-semibold text-xs transition cursor-pointer" title="Graceful restart">
+                    ↻ Restart
+                  </button>
+                `}
+                <button onclick="instanceAction('${inst.id}', 'kill')" class="py-1.5 px-2 rounded-lg bg-rose-950/90 hover:bg-rose-800 text-rose-200 border border-rose-800/60 font-semibold text-xs transition cursor-pointer" title="Force Kill Process (SIGKILL)">
+                  ⚡ Kill
+                </button>
+                <button onclick="selectConsoleInstance('${inst.id}')" class="py-1.5 px-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-semibold text-xs transition cursor-pointer">
+                  &gt;_ Console
+                </button>
+              </div>
+
+              <div class="flex items-center justify-between gap-2 pt-1">
+                <button onclick="createBackupFor('${inst.id}')" class="flex-1 py-1 px-2.5 rounded-md bg-slate-800/70 hover:bg-slate-800 text-sky-300 text-[11px] font-mono border border-slate-700/70 transition cursor-pointer">
+                  ⤓ Hot Backup World
+                </button>
+                <button onclick="viewProperties('${inst.id}')" class="py-1 px-2.5 rounded-md bg-slate-800/70 hover:bg-slate-800 text-slate-300 text-[11px] font-mono border border-slate-700/70 transition cursor-pointer">
+                  server.properties
+                </button>
+                <button onclick="deleteInstance('${inst.id}', '${escapeHtml(inst.display_name)}')" class="py-1 px-2 rounded-md bg-slate-900 hover:bg-rose-950 text-slate-400 hover:text-rose-300 text-[11px] font-mono border border-slate-800 transition cursor-pointer" title="Delete instance">
+                  🗑
+                </button>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderConsoleTabs() {
+      const tabsEl = document.getElementById('console-tabs');
+      const activeInst = state.instances.find(i => i.id === state.selectedInstanceId);
+
+      document.getElementById('console-active-badge').textContent = activeInst
+        ? `${activeInst.display_name} (UDP :${activeInst.port})`
+        : 'No Instance';
+
+      document.getElementById('import-target-label').textContent = activeInst
+        ? `Target: ${activeInst.display_name}`
+        : 'Target: None';
+
+      tabsEl.innerHTML = state.instances.map(inst => {
+        const active = inst.id === state.selectedInstanceId;
+        const dotColor = inst.status === 'online' ? 'bg-emerald-400' : 'bg-slate-500';
+        return `
+          <button
+            onclick="selectConsoleInstance('${inst.id}')"
+            class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-mono transition cursor-pointer ${
+              active
+                ? 'bg-emerald-600/20 text-emerald-300 border border-emerald-500/40 font-semibold'
+                : 'bg-slate-900 hover:bg-slate-800 text-slate-400 border border-slate-800'
+            }"
+          >
+            <span class="w-1.5 h-1.5 rounded-full ${dotColor}"></span>
+            ${escapeHtml(inst.display_name)}
+          </button>
+        `;
+      }).join('');
+    }
+
+    function selectConsoleInstance(instanceId) {
+      state.selectedInstanceId = instanceId;
+      renderInstances();
+      renderConsoleTabs();
+      renderTerminalFull();
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ action: 'subscribe_logs', instance_id: instanceId }));
+      }
+    }
+
+    function renderTerminalFull() {
+      const term = document.getElementById('terminal-output');
+      const logs = state.logsByInstance[state.selectedInstanceId] || [];
+      if (logs.length === 0) {
+        term.innerHTML = `<div class="text-slate-500 italic">No console output yet. Start the instance to stream live BDS logs...</div>`;
+        return;
+      }
+      term.innerHTML = logs.map(entry => formatTerminalRow(entry)).join('');
+      term.scrollTop = term.scrollHeight;
+    }
+
+    function formatTerminalRow(entry) {
+      return `<div class="leading-relaxed break-all"><span class="text-slate-600 select-none mr-2">${escapeHtml(entry.timestamp || '')}</span>${ansiToHtml(entry.line || '')}</div>`;
+    }
+
+    function appendTerminalEntry(entry) {
+      const term = document.getElementById('terminal-output');
+      if (term.querySelector('.italic')) {
+        term.innerHTML = '';
+      }
+      const wrapper = document.createElement('div');
+      wrapper.innerHTML = formatTerminalRow(entry);
+      term.appendChild(wrapper.firstElementChild);
+      term.scrollTop = term.scrollHeight;
+    }
+
+    function renderBackups() {
+      const listEl = document.getElementById('backups-list');
+      document.getElementById('backups-count').textContent = `${state.backups.length} archive(s)`;
+
+      if (state.backups.length === 0) {
+        listEl.innerHTML = `
+          <div class="rounded-xl bg-slate-950/50 border border-dashed border-slate-800 p-6 text-center text-xs text-slate-400">
+            No world backups yet. Click <strong>Backup Active Instance</strong> to run <code class="font-mono text-emerald-400">save hold ➔ save query ➔ zip ➔ save resume</code>.
+          </div>
+        `;
+        return;
+      }
+
+      listEl.innerHTML = state.backups.map(b => `
+        <div class="rounded-xl bg-slate-950/80 border border-slate-800/90 p-3 flex items-center justify-between gap-2">
+          <div class="min-w-0">
+            <div class="text-xs font-mono font-semibold text-white truncate" title="${escapeHtml(b.filename)}">
+              ${escapeHtml(b.filename)}
+            </div>
+            <div class="text-[11px] text-slate-400 flex items-center gap-2 mt-0.5">
+              <span>World: <strong class="text-slate-300">${escapeHtml(b.world_name)}</strong></span>
+              <span>•</span>
+              <span class="font-mono text-emerald-400">${escapeHtml(b.size_human)}</span>
+              <span>•</span>
+              <span>${escapeHtml(b.created_at)}</span>
+            </div>
+          </div>
+          <div class="flex items-center gap-1.5 shrink-0">
+            <button
+              onclick="restoreBackup('${escapeHtml(b.instance_id)}', '${escapeHtml(b.filename)}')"
+              class="px-2.5 py-1 rounded bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-300 border border-emerald-500/30 text-[11px] font-semibold transition cursor-pointer"
+              title="Restore into instance"
+            >
+              Restore
+            </button>
+            <a
+              href="/api/backups/${encodeURIComponent(b.filename)}/download"
+              class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-[11px] font-mono transition"
+              title="Download Zip"
+            >
+              ⤓
+            </a>
+            <button
+              onclick="deleteBackupFile('${escapeHtml(b.filename)}')"
+              class="px-2 py-1 rounded bg-slate-900 hover:bg-rose-950 text-slate-400 hover:text-rose-300 border border-slate-800 text-[11px] transition cursor-pointer"
+              title="Delete Backup"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // API Actions
+    async function instanceAction(instanceId, action) {
+      try {
+        selectConsoleInstance(instanceId);
+        const res = await fetch(`/api/instances/${instanceId}/${action}`, { method: 'POST' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || `Failed to ${action} instance`);
+        showToast(`Instance <strong>${action.toUpperCase()}</strong> command completed.`, 'success');
+      } catch (err) {
+        showToast(escapeHtml(err.message), 'error');
+      }
+    }
+
+    async function toggleBroadcaster() {
+      const nextState = !(state.broadcaster?.enabled);
+      try {
+        const res = await fetch('/api/broadcaster', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ enabled: nextState })
+        });
+        state.broadcaster = await res.json();
+        renderBroadcaster();
+        renderInstances();
+        showToast(`LAN Broadcaster ${nextState ? 'ENABLED' : 'DISABLED'} on UDP :19132`, nextState ? 'success' : 'warn');
+      } catch (err) {
+        showToast(escapeHtml(err.message), 'error');
+      }
+    }
+
+    async function changeBroadcastTarget(instanceId) {
+      try {
+        const res = await fetch('/api/broadcaster', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ enabled: true, target_instance_id: instanceId })
+        });
+        state.broadcaster = await res.json();
+        renderBroadcaster();
+        renderInstances();
+        if (instanceId) {
+          showToast(`Hot-switched UDP :19132 LAN Broadcaster to <strong>${escapeHtml(state.broadcaster.target_display_name)}</strong> (:${state.broadcaster.target_port})`, 'success');
+        }
+      } catch (err) {
+        showToast(escapeHtml(err.message), 'error');
+      }
+    }
+
+    async function testRakNetPing() {
+      try {
+        const res = await fetch('/api/broadcaster/test-ping', { method: 'POST' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Ping failed');
+        showToast(
+          `<strong>0x1c Pong Verified (${data.rtt_ms} ms)</strong><br/>` +
+          `<span class="font-mono text-[11px]">Server: ${escapeHtml(data.server_name)} | Protocol: ${escapeHtml(data.protocol)} | Port: ${data.ipv4_port}</span>`,
+          'success'
+        );
+      } catch (err) {
+        showToast(escapeHtml(err.message), 'error');
+      }
+    }
+
+    async function submitConsoleCommand(e) {
+      e.preventDefault();
+      const input = document.getElementById('console-input');
+      const cmd = input.value.trim();
+      if (!cmd || !state.selectedInstanceId) return;
+
+      state.commandHistory.unshift(cmd);
+      state.historyIndex = -1;
+      input.value = '';
+
+      try {
+        const res = await fetch(`/api/instances/${state.selectedInstanceId}/command`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ command: cmd })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Failed to send command');
+      } catch (err) {
+        showToast(escapeHtml(err.message), 'error');
+      }
+    }
+
+    function prefillOrSendCommand(cmdText, sendImmediately) {
+      const input = document.getElementById('console-input');
+      input.value = cmdText;
+      input.focus();
+      if (sendImmediately) {
+        submitConsoleCommand(new Event('submit'));
+      }
+    }
+
+    // Up/Down arrow history on console input
+    document.getElementById('console-input').addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowUp') {
+        if (state.historyIndex + 1 < state.commandHistory.length) {
+          state.historyIndex++;
+          e.target.value = state.commandHistory[state.historyIndex];
+          e.preventDefault();
+        }
+      } else if (e.key === 'ArrowDown') {
+        if (state.historyIndex > 0) {
+          state.historyIndex--;
+          e.target.value = state.commandHistory[state.historyIndex];
+          e.preventDefault();
+        } else if (state.historyIndex === 0) {
+          state.historyIndex = -1;
+          e.target.value = '';
+        }
+      }
+    });
+
+    // Backups & World Import
+    async function triggerInstanceBackup() {
+      if (!state.selectedInstanceId) {
+        showToast('Please select an instance first.', 'warn');
+        return;
+      }
+      await createBackupFor(state.selectedInstanceId);
+    }
+
+    async function createBackupFor(instanceId) {
+      try {
+        showToast('Running automated backup (save hold ➔ save query ➔ zip ➔ save resume)...', 'info');
+        const res = await fetch(`/api/instances/${instanceId}/backups`, { method: 'POST' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Backup failed');
+        state.backups = data.backups || [];
+        renderBackups();
+        showToast(`Created world backup: <strong>${escapeHtml(data.backup.filename)}</strong>`, 'success');
+      } catch (err) {
+        showToast(escapeHtml(err.message), 'error');
+      }
+    }
+
+    async function restoreBackup(instanceId, filename) {
+      const targetId = instanceId || state.selectedInstanceId;
+      if (!targetId) return;
+      try {
+        showToast(`Restoring world backup <strong>${escapeHtml(filename)}</strong>...`, 'info');
+        const res = await fetch(`/api/instances/${targetId}/backups/${encodeURIComponent(filename)}/restore`, {
+          method: 'POST'
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Restore failed');
+        showToast(`World restored from <strong>${escapeHtml(filename)}</strong>!`, 'success');
+      } catch (err) {
+        showToast(escapeHtml(err.message), 'error');
+      }
+    }
+
+    async function deleteBackupFile(filename) {
+      try {
+        const res = await fetch(`/api/backups/${encodeURIComponent(filename)}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Delete failed');
+        state.backups = data.backups || [];
+        renderBackups();
+        showToast(`Deleted backup <strong>${escapeHtml(filename)}</strong>`, 'info');
+      } catch (err) {
+        showToast(escapeHtml(err.message), 'error');
+      }
+    }
+
+    async function uploadWorldArchive() {
+      const fileInput = document.getElementById('world-import-file');
+      if (!fileInput.files || fileInput.files.length === 0) {
+        showToast('Select a .mcworld or .zip file to import.', 'warn');
+        return;
+      }
+      if (!state.selectedInstanceId) {
+        showToast('Select a target instance first.', 'warn');
+        return;
+      }
+      const file = fileInput.files[0];
+      const formData = new FormData();
+      formData.append('file', file);
+
+      try {
+        showToast(`Importing world <strong>${escapeHtml(file.name)}</strong>...`, 'info');
+        const res = await fetch(`/api/instances/${state.selectedInstanceId}/worlds/import`, {
+          method: 'POST',
+          body: formData
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'World import failed');
+        fileInput.value = '';
+        state.backups = data.backups || state.backups;
+        renderBackups();
+        showToast(`Successfully imported <strong>${escapeHtml(file.name)}</strong>!`, 'success');
+      } catch (err) {
+        showToast(escapeHtml(err.message), 'error');
+      }
+    }
+
+    // Creation Wizard Modal
+    function openCreateModal() {
+      document.getElementById('create-modal').classList.remove('hidden');
+      document.getElementById('create-modal').classList.add('flex');
+      document.getElementById('wiz-display-name').focus();
+    }
+
+    function closeCreateModal() {
+      document.getElementById('create-modal').classList.add('hidden');
+      document.getElementById('create-modal').classList.remove('flex');
+    }
+
+    function randomizeSeed() {
+      const randomSeed = Math.floor(Math.random() * 900000000000) - 450000000000;
+      document.getElementById('wiz-seed').value = String(randomSeed);
+    }
+
+    async function submitCreateInstance(e) {
+      e.preventDefault();
+      const payload = {
+        display_name: document.getElementById('wiz-display-name').value.trim(),
+        world_name: document.getElementById('wiz-world-name').value.trim(),
+        seed: document.getElementById('wiz-seed').value.trim(),
+        gamemode: document.getElementById('wiz-gamemode').value,
+        difficulty: document.getElementById('wiz-difficulty').value,
+        max_players: parseInt(document.getElementById('wiz-max-players').value, 10) || 10
+      };
+
+      try {
+        const res = await fetch('/api/instances', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Failed to create instance');
+        closeCreateModal();
+        document.getElementById('wiz-display-name').value = '';
+        state.selectedInstanceId = data.instance.id;
+        const stateRes = await fetch('/api/state');
+        const full = await stateRes.json();
+        state.instances = full.instances;
+        state.broadcaster = full.broadcaster;
+        renderAll();
+        selectConsoleInstance(data.instance.id);
+        showToast(
+          `Created <strong>${escapeHtml(data.instance.display_name)}</strong> on UDP :${data.instance.port}`,
+          'success'
+        );
+      } catch (err) {
+        showToast(escapeHtml(err.message), 'error');
+      }
+    }
+
+    async function viewProperties(instanceId) {
+      try {
+        const res = await fetch(`/api/instances/${instanceId}/properties`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Could not load server.properties');
+        const inst = state.instances.find(i => i.id === instanceId);
+        document.getElementById('props-modal-title').textContent = `${inst ? inst.display_name : instanceId} — server.properties`;
+        document.getElementById('props-modal-content').textContent = data.content;
+        document.getElementById('props-modal').classList.remove('hidden');
+        document.getElementById('props-modal').classList.add('flex');
+      } catch (err) {
+        showToast(escapeHtml(err.message), 'error');
+      }
+    }
+
+    function closePropsModal() {
+      document.getElementById('props-modal').classList.add('hidden');
+      document.getElementById('props-modal').classList.remove('flex');
+    }
+
+    async function deleteInstance(instanceId, name) {
+      if (!confirm(`Delete server instance "${name}" and its files?`)) return;
+      try {
+        const res = await fetch(`/api/instances/${instanceId}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error('Failed to delete instance');
+        const stateRes = await fetch('/api/state');
+        const full = await stateRes.json();
+        state.instances = full.instances;
+        state.broadcaster = full.broadcaster;
+        if (state.selectedInstanceId === instanceId) {
+          state.selectedInstanceId = state.instances[0]?.id || null;
+        }
+        renderAll();
+        renderTerminalFull();
+        showToast(`Deleted instance <strong>${escapeHtml(name)}</strong>`, 'info');
+      } catch (err) {
+        showToast(escapeHtml(err.message), 'error');
+      }
+    }
+
+    // Boot
+    connectWebSocket();
+  </script>
+</body>
+</html>
+
